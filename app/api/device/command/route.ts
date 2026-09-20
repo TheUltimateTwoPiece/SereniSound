@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isSameOrigin } from "../../../../lib/api-origin";
 import { getSupabaseServer } from "../../../../lib/supabase-server";
 
 export const runtime = "nodejs";
@@ -11,14 +12,8 @@ function isCommand(value: unknown): value is CommandType {
   return typeof value === "string" && COMMANDS.includes(value as CommandType);
 }
 
-function sameOrigin(request: Request) {
-  const origin = request.headers.get("origin");
-  if (!origin) return true;
-  return origin === new URL(request.url).origin;
-}
-
 export async function POST(request: Request) {
-  if (!sameOrigin(request)) {
+  if (!isSameOrigin(request)) {
     return NextResponse.json({ error: "Invalid request origin" }, { status: 403 });
   }
 

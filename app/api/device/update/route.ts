@@ -1,5 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
+import { runAutomaticAlertChecks } from "../../../../lib/alerts";
 import { getSupabaseServer } from "../../../../lib/supabase-server";
+import type { DeviceStatus } from "../../../../lib/types";
 
 export const runtime = "nodejs";
 
@@ -85,6 +87,27 @@ export async function POST(request: Request) {
       console.error("Supabase device update failed", error);
       return NextResponse.json({ error: "Unable to save device state" }, { status: 500 });
     }
+
+    // Safety-zone and heart-rate checks reply to the wearable first, then run, so
+    // a slow mail server can never delay the device's five-second update loop.
+    const savedStatus: DeviceStatus = {
+      device_id: DEVICE_ID,
+      latitude: body.latitude ?? null,
+      longitude: body.longitude ?? null,
+      address: typeof body.address === "string" ? body.address.slice(0, 500) : null,
+      location_source: body.location_source === "GPS" || body.location_source === "WPS" ? body.location_source : "NONE",
+      location_accuracy: body.location_accuracy ?? null,
+      current_track: currentTrack,
+      total_tracks: totalTracks,
+      is_playing: body.is_playing,
+      volume: deviceVolume,
+      heart_rate: body.heart_rate ?? null,
+      device_powered_on: body.device_powered_on ?? true,
+      updated_at: new Date().toISOString(),
+    };
+    after(async () => {
+      await runAutomaticAlertChecks(savedStatus);
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

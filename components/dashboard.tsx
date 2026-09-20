@@ -1,23 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { haversineMeters } from "../lib/geo";
 import { supabaseBrowser } from "../lib/supabase-browser";
-
-type DeviceStatus = {
-  device_id: string;
-  latitude: number | null;
-  longitude: number | null;
-  address: string | null;
-  location_source: "GPS" | "WPS" | "NONE" | null;
-  location_accuracy: number | null;
-  current_track: number;
-  total_tracks: number;
-  is_playing: boolean;
-  volume: number;
-  heart_rate: number | null;
-  device_powered_on: boolean;
-  updated_at: string;
-};
+import type { DeviceStatus } from "../lib/types";
+import SafetyPanel, { type SafetyOverlay } from "./safety-panel";
 
 declare global {
   interface Window {
@@ -54,10 +41,13 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [commandBusy, setCommandBusy] = useState(false);
   const [trackToPlay, setTrackToPlay] = useState(1);
+  const [safety, setSafety] = useState<SafetyOverlay | null>(null);
+  const [mapReady, setMapReady] = useState(false);
   const mapElement = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
   const infoWindowRef = useRef<any>(null);
+  const zoneCircleRef = useRef<any>(null);
 
   const isPoweredOn = status.device_powered_on !== false;
   const isOnline = isPoweredOn && Boolean(status.updated_at) && now - new Date(status.updated_at).getTime() <= OFFLINE_AFTER_MS;
@@ -92,6 +82,30 @@ export default function Dashboard() {
       setCommandBusy(false);
     }
   }, []);
+
+  const handleSafetyChange = useCallback((overlay: SafetyOverlay | null) => setSafety(overlay), []);
+
+  const zoneDistance = useMemo(() => {
+    if (!safety || safety.zone.latitude === null || safety.zone.longitude === null) return null;
+    if (status.latitude === null || status.longitude === null) return null;
+    return haversineMeters(
+      { latitude: status.latitude, longitude: status.longitude },
+      { latitude: safety.zone.latitude, longitude: safety.zone.longitude },
+    );
+  }, [safety, status.latitude, status.longitude]);
+
+  const outsideZone = zoneDistance !== null && safety !== null && zoneDistance > safety.zone.radiusM;
+
+  const heartTone = status.heart_rate === null || !safety?.heartRate.enabled
+    ? "neutral"
+    : status.heart_rate > safety.heartRate.limit ? "offline" : "online";
+  const heartNote = status.heart_rate === null
+    ? "Sensor not connected"
+    : !safety?.heartRate.enabled
+      ? "Heart-rate warning emails are off"
+      : status.heart_rate > safety.heartRate.limit
+        ? `Above the ${safety.heartRate.limit} bpm limit — caregiver warned by email`
+        : `Within the ${safety.heartRate.limit} bpm limit`;
 
   const infoContent = useMemo(() => {
     if (status.latitude === null || status.longitude === null) return "<strong>PWD</strong><br>Location unavailable";
@@ -156,6 +170,7 @@ export default function Dashboard() {
         streetViewControl: false, fullscreenControl: true, clickableIcons: false,
       });
       updateMap(status);
+      setMapReady(true);
     };
     window.initCaregiverMap = initialize;
     const existing = document.getElementById(scriptId);
@@ -172,6 +187,28 @@ export default function Dashboard() {
 
   useEffect(() => { updateMap(status); }, [status, updateMap]);
 
+  // Draws the caregiver's safety zone on the map and turns it red on a breach.
+  useEffect(() => {
+    if (!mapReady || !mapRef.current || !window.google) return;
+    zoneCircleRef.current?.setMap(null);
+    zoneCircleRef.current = null;
+    const zone = safety?.zone;
+    if (!zone || zone.latitude === null || zone.longitude === null || !zone.radiusM) return;
+    const breach = Boolean(zone.enabled && outsideZone);
+    const color = breach ? "#d45d63" : "#138c86";
+    zoneCircleRef.current = new window.google.maps.Circle({
+      map: mapRef.current,
+      center: { lat: zone.latitude, lng: zone.longitude },
+      radius: zone.radiusM,
+      fillColor: color,
+      fillOpacity: 0.12,
+      strokeColor: color,
+      strokeOpacity: zone.enabled ? 0.85 : 0.4,
+      strokeWeight: 2,
+      clickable: false,
+    });
+  }, [safety, outsideZone, mapReady]);
+
   return (
     <main className="shell">
       <header className="topbar">
@@ -181,7 +218,7 @@ export default function Dashboard() {
       {error && <div className="notice" role="alert">{error}</div>}
       <section className="welcome-row"><div><p className="eyebrow">LIVE DEVICE OVERVIEW</p></div><div className="last-seen"><span>LAST UPDATE</span><strong>{age}</strong></div></section>
       <section className="main-grid">
-        <article className="map-card"><div className="card-heading"><div><p className="eyebrow">CURRENT LOCATION</p><h3>{status.address || "Location awaiting update"}</h3></div><span className={`source-badge ${status.location_source === "WPS" ? "wps" : "gps"}`}>{status.location_source || "NONE"}</span></div><div className="map" ref={mapElement}><div className="map-fallback">{status.latitude === null ? "Waiting for wearable location…" : "Loading map…"}</div></div></article>
+        <article className="map-card"><div className="card-heading"><div><p className="eyebrow">CURRENT LOCATION</p><h3>{status.address || "Location awaiting update"}</h3></div><div className="badge-row">{safety?.zone.enabled && <span className={`source-badge ${outsideZone ? "alert" : "safe"}`}>{zoneDistance === null ? "ZONE ACTIVE" : outsideZone ? "OUTSIDE ZONE" : "INSIDE ZONE"}</span>}<span className={`source-badge ${status.location_source === "WPS" ? "wps" : "gps"}`}>{status.location_source || "NONE"}</span></div></div><div className="map" ref={mapElement}><div className="map-fallback">{status.latitude === null ? "Waiting for wearable location…" : "Loading map…"}</div></div></article>
         <aside className="side-stack">
           <article className="card location-card"><CardTitle label="LOCATION DETAILS" icon="⌖" /><div className="metric-grid"><Metric label="LATITUDE" value={status.latitude === null ? "—" : status.latitude.toFixed(6)} /><Metric label="LONGITUDE" value={status.longitude === null ? "—" : status.longitude.toFixed(6)} /><Metric label="SOURCE" value={status.location_source || "—"} /><Metric label="ACCURACY" value={formatAccuracy(status.location_accuracy)} /></div></article>
           <article className="card device-card"><CardTitle label="DEVICE" icon="◉" /><div className="device-line"><span>Power</span><strong className={isPoweredOn ? "green" : "red"}>{isPoweredOn ? "On" : "Powered off"}</strong></div><div className="device-line"><span>Connection</span><strong className={isOnline ? "green" : "red"}>{isOnline ? "Online" : "Offline"}</strong></div><div className="device-line"><span>Last update</span><strong>{age}</strong></div><div className="device-line"><span>Location source</span><strong>{status.location_source || "—"}</strong></div></article>
@@ -189,9 +226,10 @@ export default function Dashboard() {
       </section>
       <section className="cards-grid">
         <article className="card music-card"><CardTitle label="MUSIC" icon="♫" /><div className="music-status"><span className={`play-icon ${status.is_playing ? "active" : ""}`}>{status.is_playing ? "▶" : "Ⅱ"}</span><div><strong>{status.is_playing ? "PLAYING" : "PAUSED"}</strong><p>Track {status.current_track || "—"} of {status.total_tracks || "—"}</p></div></div><div className="progress"><span style={{ width: `${status.total_tracks ? Math.min(100, (status.current_track / status.total_tracks) * 100) : 0}%` }} /></div><div className="volume-row"><span>VOLUME</span><strong>{status.volume} <small>/ 30</small></strong></div><div className="music-controls"><button disabled={commandBusy || !isPoweredOn} onClick={() => void sendCommand("previous_track")}>Previous</button><button className="primary-button" disabled={commandBusy || !isPoweredOn} onClick={() => void sendCommand("play_pause")}>{status.is_playing ? "Pause" : "Play"}</button><button disabled={commandBusy || !isPoweredOn} onClick={() => void sendCommand("next_track")}>Next</button></div><div className="play-track-row"><input aria-label="Track number" type="number" min="1" max={status.total_tracks || 1} value={trackToPlay} disabled={!isPoweredOn} onChange={(event) => setTrackToPlay(Number(event.target.value))} /><button disabled={commandBusy || !isPoweredOn || !status.total_tracks} onClick={() => void sendCommand("play_track", trackToPlay)}>Play track</button></div></article>
-        <article className="card heart-card"><CardTitle label="HEART RATE" icon="♥" /><div className="heart-value">{status.heart_rate === null ? "--" : status.heart_rate}<span>BPM</span></div><p className="muted">{status.heart_rate === null ? "Sensor not connected" : "Current reading"}</p><div className="sensor-state"><span className="status-dot neutral" /> No medical thresholds configured</div></article>
+        <article className="card heart-card"><CardTitle label="HEART RATE" icon="♥" /><div className="heart-value">{status.heart_rate === null ? "--" : status.heart_rate}<span>BPM</span></div><p className="muted">{status.heart_rate === null ? "Sensor not connected" : "Current reading"}</p><div className="sensor-state"><span className={`status-dot ${heartTone}`} /> {heartNote}</div></article>
         <article className="card address-card"><CardTitle label="ADDRESS" icon="⌂" /><p className="address-text">{status.address || "The wearable has not reported an address yet."}</p><p className="muted">Address is supplied by the wearable&apos;s Google reverse-geocoding lookup.</p></article>
       </section>
+      <SafetyPanel status={status} onSafetyChange={handleSafetyChange} />
       <footer>Prototype monitoring view · Data is refreshed in real time from Supabase</footer>
     </main>
   );
