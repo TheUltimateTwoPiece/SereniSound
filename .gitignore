@@ -5,3 +5,8 @@ node_modules/
 !.env.example
 .vercel/
 .vercel
+
+# Firmware stays local. The sketch hardcodes the Wi-Fi credentials, the Google
+# geolocation key and the device token, so it is deliberately kept out of
+# version control. The file remains on disk exactly as-is and flashes unchanged.
+esp32/
