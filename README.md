@@ -98,3 +98,12 @@ The firmware already uploads `heart_rate` (and sends `null` when no sensor is at
 The completed sketch is `esp32/serenisound_wearable.ino`. It is deliberately **not** in version control: it hardcodes the Wi-Fi credentials, the Google geolocation key and the device token, so `esp32/` is gitignored and the file exists only on the machine that flashes the board. Set `DEVICE_UPDATE_URL` to the deployed `/api/device/update` URL before flashing. The sketch preserves the supplied GPIO assignments and music/button behavior, uses GPS first and WPS fallback, throttles reverse geocoding, performs device updates every five seconds with transient retries, and polls the secure command endpoint for caregiver music commands. Backend failures remain non-fatal.
 
 The wearable also supports a three-button power-save latch: hold all three buttons for three seconds to stop playback, notify the dashboard that the device is powered off, and switch off Wi-Fi, GPS, and the display. Hold all three buttons for another three seconds to bring everything back; the display and GPS return first and the sketch reconnects Wi-Fi in the background, so buttons and audio stay responsive the whole time. Wi-Fi is only re-enabled after the wake, and the DFPlayer stays initialized instead of being put to sleep, because reviving it over serial after a sleep was unreliable. If the dashboard cannot be reached while powering down, the device still enters power-save after a short grace period.
+
+## 7. Architecture walkthrough
+
+`public/data-flow.html` is a self-contained breakdown of how data actually moves between the wearable and the app: the five-second upload loop, the two-second command queue, the Supabase Realtime push, the server-side alert path, the full schema, and sequence traces for a music command and a safety-zone breach. It is served straight from the deployment with no build step and no dependencies beyond a Google Fonts stylesheet:
+
+- local: `http://localhost:3000/data-flow.html`
+- production: `https://serenisound-caregiver-monitor.vercel.app/data-flow.html`
+
+Edit the HTML directly if the flow changes; there is nothing to regenerate.

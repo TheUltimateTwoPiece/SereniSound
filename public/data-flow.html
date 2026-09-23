@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SereniSound — end-to-end data flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#26211b; --ink-soft:#3d362e; --muted:#7a7268;
+    --line:#e7e0d3; --line-soft:#efe9df;
+    --paper:#f6f2eb; --sheet:#fffdf9;
+    --teal:#138c86; --amber:#b8791a; --red:#c45158; --grey:#9a9288;
+    /* Rounded surfaces are for controls, not for cards: the page should read as
+       assembled sections rather than a collection of floating panels. */
+    --radius:0; --radius-sm:4px;
+    --serif:"Fraunces",Georgia,"Times New Roman",serif;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:0 36px 72px; background:var(--paper); color:var(--ink);
+    font:1rem/1.65 var(--sans);
+  }
+  header{max-width:1500px;margin:0 auto;padding:52px 0 34px}
+  h1{margin:0 0 10px;font-family:var(--serif);font-weight:600;
+     font-size:clamp(1.7rem,3.4vw,2.35rem);letter-spacing:-.025em;line-height:1.12}
+  .eyebrow{margin:0 0 10px;font-size:.69rem;font-weight:600;letter-spacing:.16em;color:var(--muted);text-transform:uppercase}
+  .lede{margin:0;color:var(--ink-soft);max-width:78ch;font-size:1.02rem}
+  /* Plain document sections separated by a hairline, not bordered cards. */
+  section{max-width:1500px;margin:0 auto;padding:42px 0 54px;border-top:1px solid var(--line)}
+  h2{margin:0 0 7px;font-family:var(--serif);font-weight:600;font-size:1.32rem;letter-spacing:-.02em}
+  h2 .num{display:inline-block;min-width:3.2em;font-family:var(--mono);font-size:.7rem;
+          font-weight:600;letter-spacing:.14em;color:var(--muted)}
+  .sub{margin:0 0 26px;color:var(--muted);font-size:.87rem;max-width:88ch}
+  /* Diagrams and tables sit on their own quiet plate, like a figure. */
+  .scroll{overflow-x:auto;overflow-y:hidden;background:var(--sheet);border:1px solid var(--line);padding:18px 20px}
+  svg{display:block;width:100%;height:auto;min-width:1080px}
+  /* ---- svg text ---- */
+  .p-title{font-size:16px;font-weight:600;fill:var(--ink);font-family:var(--serif);letter-spacing:-.015em}
+  .p-sub{font-size:12px;fill:var(--muted)}
+  .bt{font-size:14.5px;font-weight:600;fill:var(--ink);font-family:var(--serif);letter-spacing:-.015em}
+  .bt-s{font-size:13px;font-weight:600;fill:var(--teal);font-family:var(--serif)}
+  .bt-a{font-size:13px;font-weight:600;fill:var(--amber);font-family:var(--serif)}
+  .it{font-size:13px;fill:var(--ink)}
+  .sm{font-size:11.5px;fill:var(--muted)}
+  .sm-r{font-size:11.5px;fill:var(--red)}
+  .sm-t{font-size:11.5px;fill:var(--teal)}
+  .lbl{font-size:12.5px;font-weight:600;fill:var(--ink)}
+  .lbl-t{font-size:11px;font-weight:600;fill:var(--ink)}
+  .lbl-s{font-size:11.5px;fill:var(--muted)}
+  .pin-num{font-size:12px;font-weight:700;fill:var(--ink)}
+  /* ---- svg shapes ---- */
+  .box{fill:#fdfbf6;stroke:var(--line);stroke-width:1.4}
+  .box-t{fill:#f2f6f4;stroke:#7fb6b1;stroke-width:1.4}
+  .box-a{fill:#f8f3e9;stroke:#d3ac72;stroke-width:1.4}
+  .box-r{fill:#f9f1ef;stroke:#d9a19d;stroke-width:1.4}
+  .box-g{fill:#f5f2ec;stroke:var(--line);stroke-width:1.4}
+  .sep{stroke:var(--line);stroke-width:1}
+  .sep-l{stroke:#efe9df;stroke-width:1}
+  .e-teal{stroke:var(--teal);stroke-width:1.9;fill:none}
+  .e-amber{stroke:var(--amber);stroke-width:1.9;fill:none}
+  .e-grey{stroke:var(--grey);stroke-width:1.6;fill:none;stroke-dasharray:6 5}
+  .e-red{stroke:var(--red);stroke-width:1.9;fill:none}
+  .e-ghost{stroke:#a89f93;stroke-width:1.4;fill:none;stroke-dasharray:3 4}
+  .lane{stroke:var(--line);stroke-width:1.4;stroke-dasharray:5 6}
+  .pin{fill:#fffdf8;stroke:var(--ink);stroke-width:1.8}
+  .pin-t{fill:#fffdf8;stroke:var(--teal);stroke-width:2}
+  .pin-a{fill:#fffdf8;stroke:var(--amber);stroke-width:2}
+  .pin-g{fill:#fffdf8;stroke:var(--grey);stroke-width:2}
+  .pin-r{fill:#fffdf8;stroke:var(--red);stroke-width:2}
+  /* ---- legend ---- */
+  .legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(430px,100%),1fr));gap:0;margin-top:22px;border-top:1px solid var(--line)}
+  .legend div{padding:14px 22px 14px 0;border-bottom:1px solid var(--line-soft);font-size:.86rem;color:var(--ink-soft)}
+  .legend b{color:var(--ink);font-weight:650}
+  .legend code{font:.8rem/1.5 var(--mono);background:#f2ece2;padding:1px 5px;border-radius:var(--radius-sm);color:var(--ink-soft)}
+  .n{display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:50%;
+     border:1.8px solid var(--ink);font-size:11.5px;font-weight:700;color:var(--ink);margin-right:9px;flex:none}
+  .n.t{border-color:var(--teal);color:var(--teal)} .n.a{border-color:var(--amber);color:var(--amber)}
+  .n.g{border-color:var(--grey);color:var(--grey)} .n.r{border-color:var(--red);color:var(--red)}
+  .row{display:flex;align-items:flex-start}
+  table{width:100%;min-width:640px;border-collapse:collapse;font-size:.88rem}
+  th,td{text-align:left;padding:12px 18px 12px 0;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  th{font-size:.69rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  code{font:.8rem/1.5 var(--mono)}
+  .tag{display:inline-block;font-size:11px;letter-spacing:.08em;padding:2px 8px;border:1px solid var(--line);border-radius:var(--radius-sm);color:var(--muted)}
+  .tag.t{border-color:var(--teal);color:var(--teal)} .tag.a{border-color:var(--amber);color:var(--amber)}
+  .tag.r{border-color:var(--red);color:var(--red)}
+  footer{max-width:1500px;margin:0 auto;padding-top:28px;border-top:1px solid var(--line);color:var(--muted);font-size:.84rem}
+  @media (max-width:1000px){
+    body{padding:0 16px 56px}
+    section{padding:30px 0 38px}
+    header{padding:34px 0 26px}
+    .scroll{padding:12px 14px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <p class="eyebrow">SereniSound · Innofest</p>
+  <h1>End-to-end data flow — ESP32 ⇄ caregiver app</h1>
+  <p class="lede">
+    One device (<code>pwd-001</code>) hardcoded in the firmware and in four API routes. The wearable is a
+    sensor and actuator only: it never touches the database, never learns about geofences or heart-rate limits,
+    and is never contacted by the server. Four flows exist — upload, command pull, realtime push, and outbound alert.
+  </p>
+</header>
+
+<section>
+  <h2><span class="num">01</span>System topology</h2>
+  <p class="sub">Every hop, both directions. Numbers match the legend below the diagram.</p>
+  <div class="scroll">
+  <svg viewBox="0 0 1800 780" role="img" aria-label="System topology diagram">
+    <defs>
+      <marker id="mTeal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#138c86"/></marker>
+      <marker id="mAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#b8791a"/></marker>
+      <marker id="mGrey" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#9a9288"/></marker>
+      <marker id="mRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#c45158"/></marker>
+      <marker id="mInk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#201c17"/></marker>
+      <circle id="pin" r="12" cx="0" cy="0"/>
+    </defs>
+
+    <text class="p-title" x="30" y="34">Both directions of travel</text>
+    <text class="p-sub" x="30" y="56">teal = toward the caregiver · amber = toward the wearable · red = outbound alert · grey dashed = long return path or direct-to-Google</text>
+
+    <!-- ===================== GOOGLE ===================== -->
+    <rect class="box-g" x="20" y="140" width="170" height="290"/>
+    <text class="bt" x="105" y="170" text-anchor="middle">Google APIs</text>
+    <line class="sep" x1="36" y1="186" x2="174" y2="186"/>
+    <text class="it" x="105" y="212" text-anchor="middle">Geolocation v1</text>
+    <text class="it" x="105" y="240" text-anchor="middle">Geocoding JSON</text>
+    <text class="sm" x="105" y="268" text-anchor="middle">WPS fallback</text>
+    <text class="sm" x="105" y="288" text-anchor="middle">reverse geocode</text>
+    <line class="sep-l" x1="36" y1="306" x2="174" y2="306"/>
+    <text class="sm" x="105" y="330" text-anchor="middle">called by the</text>
+    <text class="sm" x="105" y="348" text-anchor="middle">device directly —</text>
+    <text class="sm" x="105" y="366" text-anchor="middle">not proxied by app</text>
+    <text class="sm-r" x="105" y="400" text-anchor="middle">key lives in firmware</text>
+
+    <!-- ===================== WEARABLE ===================== -->
+    <rect class="box box-t" x="340" y="140" width="220" height="290"/>
+    <text class="bt" x="450" y="170" text-anchor="middle">ESP32 Wearable</text>
+    <line class="sep" x1="356" y1="186" x2="544" y2="186"/>
+    <text class="sm" x="450" y="210" text-anchor="middle">device_id: pwd-001</text>
+    <text class="sm" x="450" y="230" text-anchor="middle">dual-core FreeRTOS</text>
+    <line class="sep-l" x1="356" y1="246" x2="544" y2="246"/>
+    <text class="bt-s" x="450" y="268" text-anchor="middle">core 1</text>
+    <text class="sm" x="450" y="286" text-anchor="middle">buttons · DFPlayer · LCD</text>
+    <text class="bt-s" x="450" y="310" text-anchor="middle">core 0</text>
+    <text class="sm" x="450" y="328" text-anchor="middle">HTTPS · WPS · uploads</text>
+    <line class="sep-l" x1="356" y1="344" x2="544" y2="344"/>
+    <text class="sm" x="450" y="366" text-anchor="middle">posts state every 5 s</text>
+    <text class="sm" x="450" y="384" text-anchor="middle">(or the instant it changes)</text>
+    <text class="sm" x="450" y="402" text-anchor="middle">polls commands every 2 s</text>
+    <text class="sm-r" x="450" y="422" text-anchor="middle">heart-rate sensor not wired</text>
+
+    <!-- ===================== VERCEL ===================== -->
+    <rect class="box" x="710" y="140" width="240" height="290"/>
+    <text class="bt" x="830" y="170" text-anchor="middle">Next.js 15 on Vercel</text>
+    <line class="sep" x1="726" y1="186" x2="934" y2="186"/>
+    <text class="sm" x="830" y="210" text-anchor="middle">6 API routes · nodejs</text>
+    <text class="sm" x="830" y="230" text-anchor="middle">service-role Supabase</text>
+    <line class="sep-l" x1="726" y1="246" x2="934" y2="246"/>
+    <text class="sm-t" x="830" y="268" text-anchor="middle">after() runs alert checks</text>
+    <text class="sm-t" x="830" y="286" text-anchor="middle">after the response flushes</text>
+    <line class="sep-l" x1="726" y1="302" x2="934" y2="302"/>
+    <text class="sm" x="830" y="324" text-anchor="middle">validates every payload</text>
+    <text class="sm" x="830" y="342" text-anchor="middle">same-origin gate on</text>
+    <text class="sm" x="830" y="360" text-anchor="middle">caregiver-facing routes</text>
+    <text class="sm" x="830" y="384" text-anchor="middle">no-store on responses</text>
+    <text class="sm-r" x="830" y="406" text-anchor="middle">pwd-001 hardcoded in 4 files</text>
+
+    <!-- ===================== SUPABASE ===================== -->
+    <rect class="box" x="1100" y="140" width="220" height="290"/>
+    <text class="bt" x="1210" y="170" text-anchor="middle">Supabase Postgres</text>
+    <line class="sep" x1="1116" y1="186" x2="1304" y2="186"/>
+    <text class="it" x="1210" y="212" text-anchor="middle">device_status</text>
+    <text class="sm-t" x="1210" y="230" text-anchor="middle">⟡ realtime · RLS read</text>
+    <text class="it" x="1210" y="256" text-anchor="middle">device_commands</text>
+    <text class="it" x="1210" y="278" text-anchor="middle">device_alert_settings</text>
+    <text class="it" x="1210" y="300" text-anchor="middle">device_alerts</text>
+    <line class="sep-l" x1="1116" y1="316" x2="1304" y2="316"/>
+    <text class="sm" x="1210" y="338" text-anchor="middle">RLS on all four tables</text>
+    <text class="sm" x="1210" y="356" text-anchor="middle">exactly 1 public policy</text>
+    <text class="sm" x="1210" y="374" text-anchor="middle">→ device_status only</text>
+    <text class="sm" x="1210" y="398" text-anchor="middle">service role bypasses RLS</text>
+    <text class="sm" x="1210" y="416" text-anchor="middle">no browser writes</text>
+
+    <!-- ===================== BROWSER ===================== -->
+    <rect class="box" x="1470" y="140" width="250" height="290"/>
+    <text class="bt" x="1595" y="170" text-anchor="middle">Caregiver browser</text>
+    <line class="sep" x1="1486" y1="186" x2="1704" y2="186"/>
+    <text class="sm" x="1595" y="210" text-anchor="middle">/dashboard · React 19</text>
+    <line class="sep-l" x1="1486" y1="226" x2="1704" y2="226"/>
+    <text class="bt-s" x="1595" y="248" text-anchor="middle">Dashboard</text>
+    <text class="sm" x="1595" y="266" text-anchor="middle">· 5 s status poll</text>
+    <text class="sm" x="1595" y="284" text-anchor="middle">· Realtime subscription</text>
+    <text class="sm" x="1595" y="302" text-anchor="middle">· command buttons</text>
+    <text class="sm" x="1595" y="320" text-anchor="middle">· Google Maps + zone</text>
+    <text class="bt-s" x="1595" y="346" text-anchor="middle">SafetyPanel</text>
+    <text class="sm" x="1595" y="364" text-anchor="middle">· 15 s settings poll</text>
+    <text class="sm" x="1595" y="382" text-anchor="middle">· demo scenarios</text>
+    <text class="sm" x="1595" y="404" text-anchor="middle">no direct DB writes</text>
+
+    <!-- ===================== EDGE 1 ===================== -->
+    <line class="e-teal" x1="560" y1="215" x2="704" y2="215" marker-end="url(#mTeal)"/>
+    <use href="#pin" x="632" y="215" class="pin-t"/><text class="pin-num" x="632" y="219" text-anchor="middle">1</text>
+    <text class="lbl-t" x="632" y="243" text-anchor="middle">POST /api/device/update</text>
+
+    <!-- ===================== EDGE 2 ===================== -->
+    <line class="e-teal" x1="950" y1="215" x2="1094" y2="215" marker-end="url(#mTeal)"/>
+    <use href="#pin" x="1022" y="215" class="pin-t"/><text class="pin-num" x="1022" y="219" text-anchor="middle">2</text>
+    <text class="lbl-t" x="1022" y="243" text-anchor="middle">upsert device_status</text>
+
+    <!-- ===================== EDGE 3 ===================== -->
+    <line class="e-teal" x1="1320" y1="215" x2="1464" y2="215" marker-end="url(#mTeal)"/>
+    <use href="#pin" x="1392" y="215" class="pin-t"/><text class="pin-num" x="1392" y="219" text-anchor="middle">3</text>
+    <text class="lbl-t" x="1392" y="243" text-anchor="middle">Realtime push (WSS)</text>
+
+    <!-- ===================== EDGE 5 (Google) ===================== -->
+    <line class="e-grey" x1="190" y1="267" x2="334" y2="267" marker-end="url(#mGrey)" marker-start="url(#mGrey)"/>
+    <use href="#pin" x="262" y="267" class="pin-g"/><text class="pin-num" x="262" y="271" text-anchor="middle">5</text>
+    <text class="lbl-t" x="262" y="295" text-anchor="middle">WPS + reverse geocode</text>
+
+    <!-- ===================== EDGE 9 (command poll) ===================== -->
+    <line class="e-amber" x1="560" y1="330" x2="704" y2="330" marker-end="url(#mAmber)" marker-start="url(#mAmber)"/>
+    <use href="#pin" x="632" y="330" class="pin-a"/><text class="pin-num" x="632" y="334" text-anchor="middle">9</text>
+    <text class="lbl-t" x="632" y="356" text-anchor="middle">GET /api/device/command</text>
+    <text class="lbl-t" x="632" y="372" text-anchor="middle" style="font-weight:400;fill:var(--muted)">polled every 2 s</text>
+
+    <!-- ===================== EDGE 8 (commands) ===================== -->
+    <line class="e-amber" x1="950" y1="330" x2="1094" y2="330" marker-end="url(#mAmber)" marker-start="url(#mAmber)"/>
+    <use href="#pin" x="1022" y="330" class="pin-a"/><text class="pin-num" x="1022" y="334" text-anchor="middle">8</text>
+    <text class="lbl-t" x="1022" y="356" text-anchor="middle">insert · claim pending</text>
+    <text class="lbl-t" x="1022" y="372" text-anchor="middle" style="font-weight:400;fill:var(--muted)">device_commands</text>
+
+    <!-- ===================== EDGE 6 (Brevo) ===================== -->
+    <line class="e-red" x1="760" y1="430" x2="760" y2="494" marker-end="url(#mRed)"/>
+    <use href="#pin" x="760" y="462" class="pin-r"/><text class="pin-num" x="760" y="466" text-anchor="middle">6</text>
+    <text class="lbl-s" x="778" y="466">alert email</text>
+
+    <rect class="box-r" x="710" y="500" width="240" height="120"/>
+    <text class="bt" x="830" y="530" text-anchor="middle">Brevo</text>
+    <line class="sep" x1="726" y1="546" x2="934" y2="546"/>
+    <text class="sm" x="830" y="570" text-anchor="middle">HTTPS API (preferred)</text>
+    <text class="sm" x="830" y="590" text-anchor="middle">SMTP 587 fallback</text>
+
+    <line class="e-grey" x1="950" y1="560" x2="1054" y2="560" marker-end="url(#mGrey)"/>
+    <use href="#pin" x="1002" y="560" class="pin-g"/><text class="pin-num" x="1002" y="564" text-anchor="middle">11</text>
+    <text class="lbl-t" x="1002" y="538" text-anchor="middle" style="font-weight:400;fill:var(--muted)">SMTP / HTTPS</text>
+
+    <rect class="box-g" x="1060" y="530" width="200" height="60"/>
+    <text class="it" x="1160" y="555" text-anchor="middle">Caregiver inbox</text>
+    <text class="sm" x="1160" y="574" text-anchor="middle">kakarla_hemanth_reddy@…</text>
+
+    <!-- ===================== EDGE 4 / 10 (long return path) ===================== -->
+    <path class="e-grey" d="M 1560 430 V 700 H 920 V 434" marker-end="url(#mInk)"/>
+    <use href="#pin" x="1240" y="700" class="pin-g"/><text class="pin-num" x="1240" y="704" text-anchor="middle">4</text>
+    <use href="#pin" x="1020" y="700" class="pin-g"/><text class="pin-num" x="1020" y="704" text-anchor="middle">10</text>
+    <text class="lbl" x="1330" y="724" text-anchor="middle">browser reads: status (5 s) · settings + alert history (15 s)</text>
+
+    <!-- ===================== EDGE 7 (command POST) ===================== -->
+    <path class="e-amber" d="M 1630 430 V 655 H 880 V 434" marker-end="url(#mAmber)"/>
+    <use href="#pin" x="1420" y="655" class="pin-a"/><text class="pin-num" x="1420" y="659" text-anchor="middle">7</text>
+    <text class="lbl" x="1420" y="679" text-anchor="middle">POST /api/device/command</text>
+  </svg>
+  </div>
+
+  <div class="legend">
+    <div class="row"><span class="n t">1</span><span><b>ESP32 → Vercel · <code>POST /api/device/update</code></b> — every 5 000 ms, or immediately when any state changes. JSON body, auth <code>X-Device-Token</code>. TLS via <code>WiFiClientSecure</code> + <code>setInsecure()</code> — no certificate validation. 6 s client timeout; on a non-200 the device retries in ~1 s instead of 5 s.</span></div>
+    <div class="row"><span class="n t">2</span><span><b>Vercel → Supabase · upsert <code>device_status</code></b> — service-role key bypasses RLS, <code>onConflict: device_id</code>, stamps <code>updated_at</code>. The whole payload is validated first; <code>address</code> is truncated to 500 chars.</span></div>
+    <div class="row"><span class="n t">3</span><span><b>Supabase → Browser · Realtime push (WSS)</b> — <code>postgres_changes</code> on <code>public.device_status</code> filtered <code>device_id=eq.pwd-001</code>, listening for INSERT and UPDATE. Possible because the table is <code>REPLICA IDENTITY FULL</code> and a member of the <code>supabase_realtime</code> publication.</span></div>
+    <div class="row"><span class="n g">4</span><span><b>Browser → Vercel · <code>GET /api/device/status</code></b> — every 5 000 ms with <code>cache: no-store</code>. This is the baseline path and the fallback whenever Realtime drops, so the dashboard keeps updating either way.</span></div>
+    <div class="row"><span class="n g">5</span><span><b>Wearable ↔ Google · WPS + reverse geocode</b> — the device talks to Google itself. <code>POST geolocation/v1/geolocate</code> with up to 12 scanned APs (RSSI ≥ −85 dBm), only while GPS has no fresh lock, at most every 30 s. <code>GET geocode/json</code> at most every 30 s and only if it moved ≥ 20 m. Neither is proxied by the app.</span></div>
+    <div class="row"><span class="n r">6</span><span><b>Vercel → Brevo · alert email</b> — runs inside <code>after()</code>, i.e. only once the device's response has been flushed. HTTPS API preferred (<code>api-key</code> header; rejects <code>xsmtpsib-</code> keys), otherwise SMTP <code>smtp-relay.brevo.com:587</code> with <code>requireTLS</code>.</span></div>
+    <div class="row"><span class="n a">7</span><span><b>Browser → Vercel · <code>POST /api/device/command</code></b> — same-origin gate, then a queue insert. Returns <code>{success, command_id}</code>. Nothing happens on the device yet: the dashboard has only queued work.</span></div>
+    <div class="row"><span class="n a">8</span><span><b>Vercel ↔ Supabase · <code>device_commands</code></b> — INSERT as <code>pending</code>; read the oldest pending row via <code>device_commands_pending_idx</code>; UPDATE to <code>delivered</code> with <code>delivered_at</code>. Read-then-claim, not atomic, and there is no expiry and no acknowledgement.</span></div>
+    <div class="row"><span class="n a">9</span><span><b>Wearable ↔ Vercel · <code>GET /api/device/command</code></b> — every 2 000 ms, skipped when a command is already in flight or Wi-Fi is down. 8 s client timeout; <code>−11</code> means <code>HTTPClient</code> read timeout. This interval is what sets worst-case command latency.</span></div>
+    <div class="row"><span class="n g">10</span><span><b>Browser → Vercel · <code>GET|POST /api/alerts/settings</code></b> — GET on load and every 15 000 ms, returning settings plus the last 20 alerts; POST saves the caregiver form. This is how alert history reaches the dashboard, since <code>device_alerts</code> is not a Realtime table.</span></div>
+    <div class="row"><span class="n g">11</span><span><b>Brevo → caregiver inbox</b> — inline HTML plus plain text, <code>X-SereniSound-Alert</code> header, <code>X-Priority: 1</code> on warnings, all timestamps rendered in <code>Asia/Singapore</code>. Every interpolation is HTML-escaped.</span></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">02a</span>Inside the wearable — the two cores</h2>
+  <p class="sub">The split exists because HTTPS and Wi-Fi scans block for hundreds of milliseconds; on one core that made the buttons feel dead.</p>
+  <div class="scroll">
+  <svg viewBox="0 0 1800 430" role="img" aria-label="ESP32 core responsibilities">
+    <rect class="box-t" x="30" y="30" width="550" height="370"/>
+    <text class="bt-s" x="55" y="62">core 1 · <tspan class="it">loop()</tspan> — real-time, never blocks</text>
+    <line class="sep" x1="46" y1="78" x2="564" y2="78"/>
+    <text class="it" x="55" y="106">btnLeft / btnMid / btnRight.update()</text>
+    <text class="sm" x="55" y="126">debounced button FSM with repeat + long-press</text>
+    <text class="it" x="55" y="156">3-button hold for 3 s → power gesture</text>
+    <text class="sm" x="55" y="176">latches until every button is released (8 s safety valve)</text>
+    <text class="it" x="55" y="206">executePendingCommand() → DFPlayer</text>
+    <text class="sm" x="55" y="226">UART1, pins 27/26 — the port is owned here, never touched by core 0</text>
+    <text class="it" x="55" y="256">updateGPS() → TinyGPSPlus on UART2</text>
+    <text class="sm" x="55" y="276">pins 16/17 at 9600 baud; publishes gpsHasCurrentLock to core 0</text>
+    <text class="it" x="55" y="306">play-finished detection, drawScreen() on the SSD1306</text>
+    <text class="sm" x="55" y="326">I²C pins 14/13; suppresses state while the power gesture is latched</text>
+    <text class="sm-r" x="55" y="360">setHeartRate(bpm) exists but nothing calls it — no sensor driver</text>
+    <text class="sm" x="55" y="380">uploads only through core 0; this core never touches the network</text>
+
+    <rect class="box-a" x="610" y="30" width="550" height="370"/>
+    <text class="bt-a" x="635" y="62">core 0 · <tspan class="it">networkTask</tspan> — blocking HTTPS, 10 ms loop</text>
+    <line class="sep" x1="626" y1="78" x2="1144" y2="78"/>
+    <text class="it" x="635" y="106">maintainWifiConnection()</text>
+    <text class="sm" x="635" y="126">non-blocking state machine, 15 s connect timeout, then reset</text>
+    <text class="it" x="635" y="156">attemptWpsFix() — only when core 1 says GPS has no lock</text>
+    <text class="sm" x="635" y="176">scan, sort by RSSI, drop below −85 dBm, send ≤ 12 APs, cache 30 s</text>
+    <text class="it" x="635" y="206">pollDeviceCommand() every 2 000 ms</text>
+    <text class="sm" x="635" y="226">runs first in the cycle so caregiver taps are not queued behind a heartbeat</text>
+    <text class="it" x="635" y="256">uploadDeviceState() every 5 000 ms</text>
+    <text class="sm" x="635" y="276">skips the wait entirely when stateDirty; guards with stateVersion so a</text>
+    <text class="sm" x="635" y="294">mid-request change is not silently marked as sent</text>
+    <text class="it" x="635" y="324">maybeReverseGeocode() — 30 s AND ≥ 20 m moved</text>
+    <text class="sm" x="635" y="344">power transition: one final upload (5 s grace), then WiFi.mode(WIFI_OFF)</text>
+
+    <rect class="box" x="1190" y="30" width="580" height="370"/>
+    <text class="bt" x="1215" y="62">Location priority — resolved across both cores</text>
+    <line class="sep" x1="1206" y1="78" x2="1754" y2="78"/>
+    <text class="it" x="1220" y="110">core 1 asks: location.isValid() &amp;&amp; age &lt; 5 000 ms ?</text>
+    <line class="e-ghost" x1="1220" y1="126" x2="1740" y2="126"/>
+    <text class="sm-t" x="1220" y="152">YES → source = GPS</text>
+    <text class="sm" x="1248" y="172">currentAccuracy = 0.0, wpsAttemptDue = true</text>
+    <text class="sm" x="1248" y="190">GPS is primary and always wins a fresh lock</text>
+    <text class="sm-a" x="1220" y="222">NO → core 0 falls back to WPS</text>
+    <text class="sm" x="1248" y="242">source = WPS, accuracy = Google's returned value</text>
+    <text class="sm" x="1248" y="260">re-scanned at most every 30 s while the lock is missing</text>
+    <text class="sm-r" x="1220" y="292">BOTH FAIL → latitude &amp; longitude upload as null</text>
+    <text class="sm" x="1248" y="312">server accepts it; dashboard shows "Waiting for wearable location…"</text>
+    <text class="sm" x="1248" y="330">and geofence evaluation silently no-ops, because zoneDistance returns null</text>
+    <text class="sm" x="1220" y="366">The address shown in the dashboard is produced by the device, not the server.</text>
+  </svg>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">02b</span>Cross-core state, peripherals, and the power machine</h2>
+  <p class="sub">The only things that cross between cores are a handful of <code>volatile</code> globals, swapped under an interrupt lock.</p>
+  <div class="scroll">
+  <svg viewBox="0 0 1800 470" role="img" aria-label="Shared state, peripherals, power state machine">
+    <!-- peripherals row -->
+    <rect class="box-g" x="30" y="20" width="336" height="120"/>
+    <text class="bt" x="198" y="48" text-anchor="middle">GPS NEO-6M</text>
+    <text class="sm" x="198" y="72" text-anchor="middle">UART2 · pins 16/17 · 9600</text>
+    <text class="sm" x="198" y="92" text-anchor="middle">primary location source</text>
+    <text class="sm" x="198" y="114" text-anchor="middle">lock stale after 5 000 ms</text>
+
+    <rect class="box-g" x="386" y="20" width="336" height="120"/>
+    <text class="bt" x="554" y="48" text-anchor="middle">DFPlayer Mini</text>
+    <text class="sm" x="554" y="72" text-anchor="middle">UART1 · pins 27/26</text>
+    <text class="sm" x="554" y="92" text-anchor="middle">totalTracks = readFileCounts()</text>
+    <text class="sm" x="554" y="114" text-anchor="middle">stays initialised in power save</text>
+
+    <rect class="box-g" x="742" y="20" width="336" height="120"/>
+    <text class="bt" x="910" y="48" text-anchor="middle">SSD1306 128×64</text>
+    <text class="sm" x="910" y="72" text-anchor="middle">I²C · pins 14/13</text>
+    <text class="sm" x="910" y="92" text-anchor="middle">wake re-runs display.begin()</text>
+    <text class="sm" x="910" y="114" text-anchor="middle">DISPLAYON alone is unreliable</text>
+
+    <rect class="box-g" x="1098" y="20" width="336" height="120"/>
+    <text class="bt" x="1266" y="48" text-anchor="middle">Buttons × 3</text>
+    <text class="sm" x="1266" y="72" text-anchor="middle">INPUT_PULLUP, debounced</text>
+    <text class="sm" x="1266" y="92" text-anchor="middle">short / long / repeat FSM</text>
+    <text class="sm" x="1266" y="114" text-anchor="middle">all three = power gesture</text>
+
+    <rect class="box-r" x="1454" y="20" width="336" height="120"/>
+    <text class="bt" x="1622" y="48" text-anchor="middle">Heart-rate sensor</text>
+    <text class="sm-r" x="1622" y="72" text-anchor="middle">NOT WIRED</text>
+    <text class="sm" x="1622" y="92" text-anchor="middle">setHeartRate(bpm) is the hook</text>
+    <text class="sm" x="1622" y="114" text-anchor="middle">heart_rate uploads as JSON null</text>
+
+    <!-- shared state -->
+    <rect class="box" x="30" y="180" width="860" height="260"/>
+    <text class="bt" x="55" y="210">Cross-core shared state (volatile, interrupt-guarded)</text>
+    <line class="sep" x1="46" y1="226" x2="874" y2="226"/>
+    <text class="it" x="55" y="254">pendingCommand <tspan class="sm">(uint8_t) + pendingCommandTrack (int)</tspan></text>
+    <text class="sm" x="75" y="274">core 0 writes the code, core 1 consumes it inside noInterrupts() / interrupts()</text>
+    <text class="it" x="55" y="304">stateDirty <tspan class="sm">(bool) + stateVersion (uint32_t)</tspan></text>
+    <text class="sm" x="75" y="324">set by markStateDirty() from either core; makes the next upload immediate</text>
+    <text class="it" x="55" y="354">gpsHasCurrentLock <tspan class="sm">(bool)</tspan> — core 1 tells core 0 whether WPS is allowed</text>
+    <text class="it" x="55" y="382">powerSaveMode, powerTransitionRequested, powerTransitionTarget <tspan class="sm">(bool)</tspan></text>
+    <text class="sm" x="75" y="402">core 1 requests, core 0 performs the network part of the transition</text>
+    <text class="sm-r" x="55" y="426">Deliberately split: the DFPlayer's UART must only ever be driven from core 1.</text>
+
+    <!-- power machine -->
+    <rect class="box" x="920" y="180" width="870" height="260"/>
+    <text class="bt" x="945" y="210">Power state machine</text>
+    <line class="sep" x1="936" y1="226" x2="1764" y2="226"/>
+    <text class="it" x="945" y="254">1 · all three buttons held 3 000 ms → requestPowerMode(!powerSaveMode)</text>
+    <text class="it" x="945" y="286">2 · core 0 sends one last upload with device_powered_on = false</text>
+    <text class="sm" x="965" y="306">while Wi-Fi is still up; gives up after a 5 000 ms grace period so sleeping is never blocked</text>
+    <text class="it" x="945" y="336">3 · WiFi.disconnect() then WiFi.mode(WIFI_OFF); DFPlayer stopped but still initialised</text>
+    <text class="sm" x="965" y="356">GPS UART closed and the display turned off; the button loop keeps running</text>
+    <text class="it" x="945" y="386">4 · on wake: re-init display, reopen GPS, reconnect Wi-Fi</text>
+    <text class="sm" x="965" y="406">stateDirty = true and lastDeviceUpdate = 0, so the first upload is immediate</text>
+    <text class="sm" x="945" y="428">The dashboard distinguishes POWERED OFF from OFFLINE, and skips alert checks entirely when off.</text>
+  </svg>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">03</span>Data model</h2>
+  <p class="sub">Four tables, all with RLS enabled. Only <code>device_status</code> is readable by a browser key, and only <code>device_status</code> is a Realtime table.</p>
+  <div class="scroll">
+  <svg viewBox="0 0 1800 780" role="img" aria-label="Database schema">
+    <!-- device_status -->
+    <rect class="box-t" x="30" y="20" width="420" height="740"/>
+    <text class="bt-s" x="52" y="52">device_status</text>
+    <text class="sm" x="52" y="72">one row per device · the live telemetry table</text>
+    <line class="sep" x1="46" y1="88" x2="434" y2="88"/>
+    <text class="it" x="52" y="114">device_id</text><text class="sm" x="300" y="114">text · PRIMARY KEY</text>
+    <text class="it" x="52" y="140">latitude / longitude</text><text class="sm" x="300" y="140">float8 · nullable</text>
+    <text class="it" x="52" y="166">address</text><text class="sm" x="300" y="166">text · ≤ 500 chars</text>
+    <text class="it" x="52" y="192">location_source</text><text class="sm" x="300" y="192">CHECK GPS|WPS|NONE</text>
+    <text class="it" x="52" y="218">location_accuracy</text><text class="sm" x="300" y="218">float8</text>
+    <text class="it" x="52" y="244">current_track / total_tracks</text><text class="sm" x="300" y="244">int4 · ≥ 0</text>
+    <text class="it" x="52" y="270">is_playing</text><text class="sm" x="300" y="270">bool</text>
+    <text class="it" x="52" y="296">volume</text><text class="sm" x="300" y="296">CHECK 0 … 30</text>
+    <text class="it" x="52" y="322">heart_rate</text><text class="sm" x="300" y="322">int4 · ≥ 0, nullable</text>
+    <text class="it" x="52" y="348">device_powered_on</text><text class="sm" x="300" y="348">bool</text>
+    <text class="it" x="52" y="374">updated_at</text><text class="sm" x="300" y="374">timestamptz</text>
+    <line class="sep-l" x1="46" y1="396" x2="434" y2="396"/>
+    <text class="sm-t" x="52" y="422">⟡ REPLICA IDENTITY FULL</text>
+    <text class="sm-t" x="52" y="442">⟡ member of supabase_realtime</text>
+    <text class="sm-t" x="52" y="462">⟡ 1 public policy: SELECT to anon</text>
+    <text class="sm-t" x="52" y="480">   + authenticated, USING (true)</text>
+    <line class="sep-l" x1="46" y1="502" x2="434" y2="502"/>
+    <text class="sm" x="52" y="528">Written only by the service role, via</text>
+    <text class="sm" x="52" y="546">POST /api/device/update (upsert on</text>
+    <text class="sm" x="52" y="564">device_id, stamped server-side).</text>
+    <text class="sm-r" x="52" y="596">Publicly readable — this is a named</text>
+    <text class="sm-r" x="52" y="614">person's live coordinates, and the</text>
+    <text class="sm-r" x="52" y="632">policy is USING (true) with no device</text>
+    <text class="sm-r" x="52" y="650">scoping.</text>
+    <text class="sm" x="52" y="682">Offline is inferred, not stored: the</text>
+    <text class="sm" x="52" y="700">dashboard compares updated_at against</text>
+    <text class="sm" x="52" y="718">a 10 000 ms threshold (2× heartbeat).</text>
+
+    <!-- device_commands -->
+    <rect class="box-a" x="470" y="20" width="420" height="740"/>
+    <text class="bt-a" x="492" y="52">device_commands</text>
+    <text class="sm" x="492" y="72">the downlink queue — one row per tap</text>
+    <line class="sep" x1="486" y1="88" x2="874" y2="88"/>
+    <text class="it" x="492" y="114">id</text><text class="sm" x="740" y="114">int8 · PK identity</text>
+    <text class="it" x="492" y="140">device_id</text><text class="sm" x="740" y="140">text</text>
+    <text class="it" x="492" y="166">command</text><text class="sm" x="700" y="166">CHECK play_pause |</text>
+    <text class="sm" x="716" y="184">next_track | previous_track |</text>
+    <text class="sm" x="716" y="202">play_track</text>
+    <text class="it" x="492" y="228">track</text><text class="sm" x="740" y="228">int4 · nullable, 1 … 10000</text>
+    <text class="it" x="492" y="254">status</text><text class="sm" x="740" y="254">CHECK pending | delivered</text>
+    <text class="it" x="492" y="280">created_at / delivered_at</text><text class="sm" x="740" y="280">timestamptz</text>
+    <line class="sep-l" x1="486" y1="302" x2="874" y2="302"/>
+    <text class="sm-t" x="492" y="328">index device_commands_pending_idx</text>
+    <text class="sm-t" x="492" y="346">  (device_id, status, created_at)</text>
+    <text class="sm" x="492" y="372">RLS enabled · no browser policy</text>
+    <text class="sm" x="492" y="390">→ unreachable with the publishable key</text>
+    <line class="sep-l" x1="486" y1="412" x2="874" y2="412"/>
+    <text class="sm" x="492" y="438">Lifecycle: dashboard POST inserts as</text>
+    <text class="sm" x="492" y="456">pending → device GET reads the oldest</text>
+    <text class="sm" x="492" y="474">pending row and the route marks it</text>
+    <text class="sm" x="492" y="492">delivered in the same request.</text>
+    <text class="sm-r" x="492" y="524">Three gaps worth naming:</text>
+    <text class="sm-r" x="492" y="544">· read-then-claim, not atomic</text>
+    <text class="sm-r" x="492" y="562">· no acknowledgement from the device</text>
+    <text class="sm-r" x="492" y="580">· no expiry or retry cap, so a stale</text>
+    <text class="sm-r" x="492" y="598">  command fires whenever it reconnects</text>
+    <text class="sm" x="492" y="630">The device maps the string to a uint8</text>
+    <text class="sm" x="492" y="648">code and hands it to core 1, which owns</text>
+    <text class="sm" x="492" y="666">the DFPlayer UART.</text>
+    <text class="sm" x="492" y="698">Delivery is invisible to the caregiver;</text>
+    <text class="sm" x="492" y="716">success is inferred from the state that</text>
+    <text class="sm" x="492" y="734">comes back on the next upload.</text>
+
+    <!-- device_alert_settings -->
+    <rect class="box" x="910" y="20" width="420" height="740"/>
+    <text class="bt" x="932" y="52">device_alert_settings</text>
+    <text class="sm" x="932" y="72">caregiver configuration · one row</text>
+    <line class="sep" x1="926" y1="88" x2="1314" y2="88"/>
+    <text class="it" x="932" y="114">device_id</text><text class="sm" x="1180" y="114">PK · FK → device_status</text>
+    <text class="sm" x="1196" y="132">ON DELETE CASCADE</text>
+    <text class="it" x="932" y="158">alerts_enabled</text><text class="sm" x="1180" y="158">bool</text>
+    <text class="it" x="932" y="184">alert_email</text><text class="sm" x="1180" y="184">text</text>
+    <text class="it" x="932" y="210">geofence_enabled</text><text class="sm" x="1180" y="210">bool</text>
+    <text class="it" x="932" y="236">zone_label</text><text class="sm" x="1180" y="236">text</text>
+    <text class="it" x="932" y="262">zone_latitude / zone_longitude</text><text class="sm" x="1180" y="262">float8 · both or neither</text>
+    <text class="it" x="932" y="288">zone_radius_m</text><text class="sm" x="1180" y="288">CHECK 25 … 50000</text>
+    <text class="it" x="932" y="314">heart_rate_enabled</text><text class="sm" x="1180" y="314">bool</text>
+    <text class="it" x="932" y="340">max_heart_rate</text><text class="sm" x="1180" y="340">CHECK 40 … 250</text>
+    <text class="it" x="932" y="366">last_geofence_alert_at</text><text class="sm" x="1180" y="366">timestamptz</text>
+    <text class="it" x="932" y="392">last_heart_rate_alert_at</text><text class="sm" x="1180" y="392">timestamptz</text>
+    <text class="it" x="932" y="418">updated_at</text><text class="sm" x="1180" y="418">timestamptz</text>
+    <line class="sep-l" x1="926" y1="440" x2="1314" y2="440"/>
+    <text class="sm" x="932" y="466">RLS enabled · no browser policy</text>
+    <text class="sm" x="932" y="484">Written by POST /api/alerts/settings</text>
+    <text class="sm" x="932" y="502">after validation: email regex, radius,</text>
+    <text class="sm" x="932" y="520">heart-rate range, both-or-neither zone</text>
+    <text class="sm" x="932" y="538">coordinates, geofence needs a centre.</text>
+    <line class="sep-l" x1="926" y1="560" x2="1314" y2="560"/>
+    <text class="sm-t" x="932" y="586">The two last_*_at columns are the</text>
+    <text class="sm-t" x="932" y="604">cooldown mechanism: 5 minutes per kind,</text>
+    <text class="sm-t" x="932" y="622">per alert type, evaluated server-side.</text>
+    <text class="sm" x="932" y="654">These settings never reach the wearable.</text>
+    <text class="sm" x="932" y="672">The ESP32 has no idea what a geofence</text>
+    <text class="sm" x="932" y="690">or a heart-rate limit is; the server</text>
+    <text class="sm" x="932" y="708">re-evaluates them on every upload.</text>
+
+    <!-- device_alerts -->
+    <rect class="box-r" x="1350" y="20" width="420" height="740"/>
+    <text class="bt" x="1372" y="52">device_alerts</text>
+    <text class="sm" x="1372" y="72">the audit log — every evaluation, sent or not</text>
+    <line class="sep" x1="1366" y1="88" x2="1754" y2="88"/>
+    <text class="it" x="1372" y="114">id</text><text class="sm" x="1620" y="114">int8 · PK identity</text>
+    <text class="it" x="1372" y="140">device_id</text><text class="sm" x="1620" y="140">text</text>
+    <text class="it" x="1372" y="166">kind</text><text class="sm" x="1580" y="166">CHECK geofence_exit |</text>
+    <text class="sm" x="1588" y="184">heart_rate_high | recovery | test</text>
+    <text class="it" x="1372" y="210">message</text><text class="sm" x="1620" y="210">text</text>
+    <text class="it" x="1372" y="236">detail</text><text class="sm" x="1620" y="236">jsonb · default '{}'</text>
+    <text class="it" x="1372" y="262">email_to</text><text class="sm" x="1620" y="262">text</text>
+    <text class="it" x="1372" y="288">email_status</text><text class="sm" x="1600" y="288">CHECK sent | failed | skipped</text>
+    <text class="it" x="1372" y="314">email_error</text><text class="sm" x="1620" y="314">text · human-readable hint</text>
+    <text class="it" x="1372" y="340">is_test</text><text class="sm" x="1620" y="340">bool</text>
+    <text class="it" x="1372" y="366">created_at</text><text class="sm" x="1620" y="366">timestamptz</text>
+    <line class="sep-l" x1="1366" y1="388" x2="1754" y2="388"/>
+    <text class="sm-t" x="1372" y="414">index device_alerts_recent_idx</text>
+    <text class="sm" x="1372" y="440">RLS enabled · no browser policy</text>
+    <text class="sm" x="1372" y="458">Not a Realtime table — the dashboard</text>
+    <text class="sm" x="1372" y="476">reads it through the 15 s settings poll.</text>
+    <line class="sep-l" x1="1366" y1="498" x2="1754" y2="498"/>
+    <text class="sm" x="1372" y="524">Skipped alerts are logged too, so the</text>
+    <text class="sm" x="1372" y="542">timeline shows suppression, not silence.</text>
+    <text class="sm" x="1372" y="574">recovery events are dashboard-only and</text>
+    <text class="sm" x="1372" y="592">never emailed.</text>
+    <text class="sm" x="1372" y="624">Demo scenarios reuse the real detection</text>
+    <text class="sm" x="1372" y="642">code against invented readings, get a</text>
+    <text class="sm" x="1372" y="660">[DEMO] prefix, skip the cooldown, and</text>
+    <text class="sm" x="1372" y="678">are flagged is_test = true.</text>
+    <text class="sm" x="1372" y="710">clear_history deletes these rows and</text>
+    <text class="sm" x="1372" y="728">nulls both cooldown stamps.</text>
+  </svg>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">04a</span>Sequence — caregiver taps &ldquo;Next track&rdquo;</h2>
+  <p class="sub">Solid = request, dashed = response. Total latency is dominated by the device's 2 s poll interval.</p>
+  <div class="scroll">
+  <svg viewBox="0 0 1800 720" role="img" aria-label="Command round-trip sequence">
+    <defs>
+      <marker id="sInk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#201c17"/></marker>
+      <marker id="sTeal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#138c86"/></marker>
+    </defs>
+
+    <!-- lanes -->
+    <g>
+      <rect class="box" x="90" y="16" width="220" height="46"/>
+      <text class="bt" x="200" y="44" text-anchor="middle" style="font-size:13.5px">Browser</text>
+      <rect class="box" x="510" y="16" width="220" height="46"/>
+      <text class="bt" x="620" y="44" text-anchor="middle" style="font-size:13.5px">Vercel · API route</text>
+      <rect class="box" x="930" y="16" width="220" height="46"/>
+      <text class="bt" x="1040" y="44" text-anchor="middle" style="font-size:13.5px">Supabase</text>
+      <rect class="box-t" x="1350" y="16" width="220" height="46"/>
+      <text class="bt" x="1460" y="44" text-anchor="middle" style="font-size:13.5px">ESP32</text>
+    </g>
+    <line class="lane" x1="200" y1="62" x2="200" y2="670"/>
+    <line class="lane" x1="620" y1="62" x2="620" y2="670"/>
+    <line class="lane" x1="1040" y1="62" x2="1040" y2="670"/>
+    <line class="lane" x1="1460" y1="62" x2="1460" y2="670"/>
+
+    <!-- messages -->
+    <g class="it">
+      <text class="lbl" x="410" y="106" text-anchor="middle">POST /api/device/command  { command: "next_track" }</text>
+      <line class="e-grey" x1="200" y1="118" x2="614" y2="118" marker-end="url(#sInk)"/>
+
+      <text class="lbl" x="830" y="142" text-anchor="middle">same-origin gate → INSERT device_commands (status='pending')</text>
+      <line class="e-grey" x1="620" y1="154" x2="1034" y2="154" marker-end="url(#sInk)"/>
+
+      <text class="lbl-s" x="830" y="178" text-anchor="middle">id = 4821</text>
+      <line class="e-ghost" x1="1040" y1="190" x2="626" y2="190" marker-end="url(#sInk)"/>
+
+      <text class="lbl-s" x="410" y="214" text-anchor="middle">200 { success: true, command_id: 4821 }</text>
+      <line class="e-ghost" x1="620" y1="226" x2="206" y2="226" marker-end="url(#sInk)"/>
+
+      <text class="lbl" x="1250" y="252" text-anchor="middle">GET /api/device/command  ·  X-Device-Token  ·  within 2 000 ms</text>
+      <line class="e-teal" x1="1460" y1="264" x2="626" y2="264" marker-end="url(#sTeal)"/>
+
+      <text class="lbl" x="830" y="288" text-anchor="middle">SELECT oldest status='pending' ORDER BY created_at LIMIT 1</text>
+      <line class="e-grey" x1="620" y1="300" x2="1034" y2="300" marker-end="url(#sInk)"/>
+
+      <text class="lbl-s" x="830" y="324" text-anchor="middle">{ id: 4821, command: "next_track", track: null }</text>
+      <line class="e-ghost" x1="1040" y1="336" x2="626" y2="336" marker-end="url(#sInk)"/>
+
+      <text class="lbl" x="830" y="360" text-anchor="middle">UPDATE SET status='delivered', delivered_at = now()</text>
+      <line class="e-grey" x1="620" y1="372" x2="1034" y2="372" marker-end="url(#sInk)"/>
+
+      <text class="lbl-s" x="1250" y="396" text-anchor="middle">200 { command: { id: 4821, command: "next_track" } }</text>
+      <line class="e-ghost" x1="620" y1="408" x2="1454" y2="408" marker-end="url(#sInk)"/>
+
+      <path class="e-teal" d="M 1460 434 H 1530 V 470 H 1466" marker-end="url(#sTeal)"/>
+      <text class="lbl" x="1460" y="424" style="font-size:11.5px">core 0 parks the code in volatile pendingCommand</text>
+
+      <path class="e-teal" d="M 1460 506 H 1530 V 542 H 1466" marker-end="url(#sTeal)"/>
+      <text class="lbl" x="1460" y="496" style="font-size:11.5px">core 1 executePendingCommand() → dfPlayer.play(4)</text>
+
+      <text class="lbl" x="1250" y="578" text-anchor="middle">POST /api/device/update  ·  state dirty, so sent immediately</text>
+      <line class="e-teal" x1="1460" y1="590" x2="626" y2="590" marker-end="url(#sTeal)"/>
+
+      <text class="lbl-s" x="830" y="614" text-anchor="middle">upsert device_status (current_track = 4, is_playing = true)</text>
+      <line class="e-grey" x1="620" y1="626" x2="1034" y2="626" marker-end="url(#sInk)"/>
+
+      <text class="lbl" x="620" y="652" text-anchor="middle">Realtime UPDATE → payload.new</text>
+      <line class="e-teal" x1="1040" y1="664" x2="206" y2="664" marker-end="url(#sTeal)"/>
+      <text class="lbl-s" x="200" y="690" text-anchor="middle">setStatus() → the UI finally shows track 4</text>
+    </g>
+  </svg>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">04b</span>Sequence — safety-zone breach through to email</h2>
+  <p class="sub">The device is answered first; detection and delivery happen inside <code>after()</code>, so mail latency never touches the wearable's 5 s loop.</p>
+  <div class="scroll">
+  <svg viewBox="0 0 1800 660" role="img" aria-label="Alert delivery sequence">
+    <defs>
+      <marker id="aInk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#201c17"/></marker>
+      <marker id="aRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#c45158"/></marker>
+    </defs>
+
+    <g>
+      <rect class="box" x="80" y="16" width="200" height="46"/>
+      <text class="bt" x="180" y="44" text-anchor="middle" style="font-size:13.5px">Browser</text>
+      <rect class="box" x="440" y="16" width="200" height="46"/>
+      <text class="bt" x="540" y="44" text-anchor="middle" style="font-size:13.5px">Vercel</text>
+      <rect class="box" x="800" y="16" width="200" height="46"/>
+      <text class="bt" x="900" y="44" text-anchor="middle" style="font-size:13.5px">Supabase</text>
+      <rect class="box-t" x="1160" y="16" width="200" height="46"/>
+      <text class="bt" x="1260" y="44" text-anchor="middle" style="font-size:13.5px">ESP32</text>
+      <rect class="box-r" x="1520" y="16" width="200" height="46"/>
+      <text class="bt" x="1620" y="44" text-anchor="middle" style="font-size:13.5px">Brevo</text>
+    </g>
+    <line class="lane" x1="180" y1="62" x2="180" y2="610"/>
+    <line class="lane" x1="540" y1="62" x2="540" y2="610"/>
+    <line class="lane" x1="900" y1="62" x2="900" y2="610"/>
+    <line class="lane" x1="1260" y1="62" x2="1260" y2="610"/>
+    <line class="lane" x1="1620" y1="62" x2="1620" y2="610"/>
+
+    <text class="lbl" x="900" y="106" text-anchor="middle">POST /api/device/update  ·  lat/lng now 340 m outside a 200 m zone</text>
+    <line class="e-teal" x1="1260" y1="118" x2="546" y2="118" marker-end="url(#sTeal)"/>
+
+    <text class="lbl-s" x="720" y="142" text-anchor="middle">upsert device_status</text>
+    <line class="e-grey" x1="540" y1="154" x2="894" y2="154" marker-end="url(#aInk)"/>
+
+    <text class="lbl" x="900" y="180" text-anchor="middle">200 { success: true }  — flushed BEFORE any alert work begins</text>
+    <line class="e-ghost" x1="540" y1="192" x2="1254" y2="192" marker-end="url(#aInk)"/>
+
+    <path class="e-red" d="M 540 218 H 610 V 254 H 546" marker-end="url(#aRed)"/>
+    <text class="lbl" x="700" y="212" style="font-size:12px">after() → runAutomaticAlertChecks(savedStatus)</text>
+
+    <text class="lbl-s" x="720" y="288" text-anchor="middle">SELECT device_alert_settings</text>
+    <line class="e-grey" x1="540" y1="300" x2="894" y2="300" marker-end="url(#aInk)"/>
+
+    <path class="e-red" d="M 540 326 H 610 V 362 H 546" marker-end="url(#aRed)"/>
+    <text class="lbl" x="700" y="320" style="font-size:12px">evaluateTelemetry() → haversine 340 m &gt; 200 m → geofence_exit</text>
+
+    <path class="e-red" d="M 540 384 H 610 V 420 H 546" marker-end="url(#aRed)"/>
+    <text class="lbl" x="700" y="378" style="font-size:12px">isWithinCooldown(last_geofence_alert_at)? no → send</text>
+
+    <text class="lbl" x="1080" y="450" text-anchor="middle">POST api.brevo.com/v3/smtp/email  (or SMTP 587)</text>
+    <line class="e-red" x1="540" y1="462" x2="1614" y2="462" marker-end="url(#aRed)"/>
+
+    <text class="lbl-s" x="1620" y="492" text-anchor="middle">→ caregiver inbox</text>
+    <path class="e-red" d="M 1620 504 H 1690 V 528 H 1626" marker-end="url(#aRed)"/>
+
+    <text class="lbl-s" x="720" y="524" text-anchor="middle">INSERT device_alerts (email_status='sent')</text>
+    <line class="e-grey" x1="540" y1="536" x2="894" y2="536" marker-end="url(#aInk)"/>
+
+    <text class="lbl-s" x="720" y="560" text-anchor="middle">UPDATE last_geofence_alert_at = now()</text>
+    <line class="e-grey" x1="540" y1="572" x2="894" y2="572" marker-end="url(#aInk)"/>
+
+    <text class="lbl" x="360" y="598" text-anchor="middle">GET /api/alerts/settings (15 s poll) → warning appears in the timeline</text>
+    <line class="e-ghost" x1="180" y1="610" x2="534" y2="610" marker-end="url(#aInk)"/>
+  </svg>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">05</span>Trust boundaries and failure behaviour</h2>
+  <p class="sub">Every row here is a property of the code as written, not a hypothetical.</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:23%">Hop</th><th style="width:16%">Initiator</th><th style="width:29%">Authentication</th><th>Exposure</th></tr></thead>
+    <tbody>
+      <tr><td><code>POST /api/device/update</code></td><td>ESP32</td><td><code>X-Device-Token</code> compared with <code>!==</code> against <code>DEVICE_UPDATE_TOKEN</code> (a four-character placeholder that was committed in the sketch — value redacted here)</td><td>Weak shared secret, no constant-time compare, and the same value guards the command poll</td></tr>
+      <tr><td><code>GET /api/device/command</code></td><td>ESP32</td><td>same <code>X-Device-Token</code></td><td>Rotating it requires a firmware reflash — there is no OTA path</td></tr>
+      <tr><td><code>POST /api/device/command</code></td><td>Browser</td><td><code>isSameOrigin</code> only, and a missing <code>Origin</code> header is allowed by design</td><td>Anyone who can send a request without an Origin can queue playback commands</td></tr>
+      <tr><td><code>POST /api/alerts/settings</code></td><td>Browser</td><td><code>isSameOrigin</code> only</td><td>Alert email and zone can be changed by a request that omits Origin</td></tr>
+      <tr><td><code>GET /api/device/status</code></td><td>Anyone</td><td><strong>none</strong></td><td>Returns a named individual's live coordinates; no auth, no rate limit</td></tr>
+      <tr><td>Realtime channel</td><td>Browser → Supabase</td><td>Publishable key + policy <code>USING (true)</code> for <code>anon, authenticated</code></td><td>Policy is not scoped to the device, so any anon client can subscribe to <code>device_status</code></td></tr>
+      <tr><td>Device TLS</td><td>ESP32</td><td><code>client.setInsecure()</code> on every call</td><td>No certificate validation, and no connection reuse — a fresh handshake per request</td></tr>
+      <tr><td>Server → DB</td><td>Vercel</td><td>Service-role key</td><td>Bypasses RLS entirely; the other three tables have no browser policy by design</td></tr>
+    </tbody>
+  </table>
+
+  <table style="margin-top:26px">
+    <thead><tr><th style="width:26%">Failure</th><th style="width:44%">Designed behaviour</th><th>Recovery</th></tr></thead>
+    <tbody>
+      <tr><td>Wi-Fi down</td><td>Upload and command poll skip silently with a throttled 5 s log; music and GPS keep working</td><td>Reconnect state machine retries, 15 s per attempt, then resets the connection</td></tr>
+      <tr><td>No GPS lock</td><td><code>location_source</code> flips to <code>WPS</code> and the dashboard badge changes colour</td><td>WPS scan every 30 s; GPS reclaims priority the moment a fresh lock appears</td></tr>
+      <tr><td>Both location sources fail</td><td><code>latitude</code>/<code>longitude</code> upload as <code>null</code>; the server accepts it</td><td>Geofence evaluation no-ops, because <code>zoneDistance</code> returns <code>null</code> — a silent gap</td></tr>
+      <tr><td>Vercel slow or erroring</td><td>Firmware retries in ~1 s rather than waiting the full 5 s; <code>−11</code> logged distinctly</td><td>Command poll gets a longer 8 s timeout than the upload, for cold starts</td></tr>
+      <tr><td>Command never collected</td><td>Row stays <code>pending</code>; the partial index keeps the scan cheap</td><td>None — no expiry, so it fires whenever the device next connects</td></tr>
+      <tr><td>Realtime drops</td><td>Banner: &ldquo;Realtime connection interrupted; five-second refresh is active&rdquo;</td><td>The 5 s status poll keeps the dashboard current throughout</td></tr>
+      <tr><td>Brevo misconfigured</td><td>Email marked <code>failed</code> with a specific hint; the alert is still logged; the upload still succeeds</td><td>Set <code>BREVO_API_KEY</code> (<code>xkeysib-</code>) to bypass SMTP IP restrictions</td></tr>
+      <tr><td>Device powered off</td><td>One final upload with <code>device_powered_on:false</code>, then <code>WiFi.mode(WIFI_OFF)</code></td><td>On wake, <code>stateDirty</code> is forced so the first upload is immediate</td></tr>
+      <tr><td>Power-off notice undeliverable</td><td>Device sleeps anyway after the 5 s grace period — sleeping is never blocked by the network</td><td>Dashboard shows POWERED OFF; alert checks short-circuit while off</td></tr>
+      <tr><td>Local dev missing env</td><td><code>getSupabaseServer()</code> throws and the dashboard shows &ldquo;Unable to load device status&rdquo;</td><td>Add <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>SUPABASE_SERVICE_ROLE_KEY</code> to <code>.env.local</code> — production is unaffected</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<footer>
+  Generated from the code as it stands: <code>app/api/device/*</code>, <code>app/api/alerts/*</code>, <code>lib/alerts.ts</code>, <code>components/dashboard.tsx</code>, <code>components/safety-panel.tsx</code>, <code>supabase/schema.sql</code>, and <code>esp32/serenisound_wearable.ino</code>.
+</footer>
+
+</body>
+</html>
