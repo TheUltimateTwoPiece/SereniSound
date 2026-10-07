@@ -18,6 +18,8 @@ const emptyStatus: DeviceStatus = {
   device_id: "pwd-001", latitude: null, longitude: null, address: null,
   location_source: "NONE", location_accuracy: null, current_track: 0,
   total_tracks: 0, is_playing: false, volume: 0, heart_rate: null,
+  stress_score: null, stress_label: null, spo2: null, rmssd_ms: null,
+  wrist_connected: false,
   device_powered_on: true,
   updated_at: "",
 };
@@ -100,12 +102,23 @@ export default function Dashboard() {
     ? "neutral"
     : status.heart_rate > safety.heartRate.limit ? "offline" : "online";
   const heartNote = status.heart_rate === null
-    ? "Sensor not connected"
+    ? (status.wrist_connected ? "Wrist unit linked, waiting for a reading" : "Wrist unit not connected")
     : !safety?.heartRate.enabled
       ? "Heart-rate warning emails are off"
       : status.heart_rate > safety.heartRate.limit
         ? `Above the ${safety.heartRate.limit} bpm limit — caregiver warned by email`
         : `Within the ${safety.heartRate.limit} bpm limit`;
+
+  const stressTone = !status.wrist_connected || status.stress_score === null
+    ? "neutral"
+    : (status.stress_label || "").includes("STRESS") || (status.stress_score ?? 0) >= 60
+      ? "offline"
+      : "online";
+  const stressNote = !status.wrist_connected
+    ? "Waiting for the wrist unit over Bluetooth"
+    : status.stress_label
+      ? status.stress_label.replace(/_/g, " ")
+      : "Wrist unit connected";
 
   const infoContent = useMemo(() => {
     if (status.latitude === null || status.longitude === null) return "<strong>PWD</strong><br>Location unavailable";
@@ -221,12 +234,13 @@ export default function Dashboard() {
         <article className="map-card"><div className="card-heading"><div><p className="eyebrow">CURRENT LOCATION</p><h3>{status.address || "Location awaiting update"}</h3></div><div className="badge-row">{safety?.zone.enabled && <span className={`source-badge ${outsideZone ? "alert" : "safe"}`}>{zoneDistance === null ? "ZONE ACTIVE" : outsideZone ? "OUTSIDE ZONE" : "INSIDE ZONE"}</span>}<span className={`source-badge ${status.location_source === "WPS" ? "wps" : "gps"}`}>{status.location_source || "NONE"}</span></div></div><div className="map" ref={mapElement}><div className="map-fallback">{status.latitude === null ? "Waiting for wearable location…" : "Loading map…"}</div></div></article>
         <aside className="side-stack">
           <article className="card location-card"><CardTitle label="LOCATION DETAILS" icon="⌖" /><div className="metric-grid"><Metric label="LATITUDE" value={status.latitude === null ? "—" : status.latitude.toFixed(6)} /><Metric label="LONGITUDE" value={status.longitude === null ? "—" : status.longitude.toFixed(6)} /><Metric label="SOURCE" value={status.location_source || "—"} /><Metric label="ACCURACY" value={formatAccuracy(status.location_accuracy)} /></div></article>
-          <article className="card device-card"><CardTitle label="DEVICE" icon="◉" /><div className="device-line"><span>Power</span><strong className={isPoweredOn ? "green" : "red"}>{isPoweredOn ? "On" : "Powered off"}</strong></div><div className="device-line"><span>Connection</span><strong className={isOnline ? "green" : "red"}>{isOnline ? "Online" : "Offline"}</strong></div><div className="device-line"><span>Last update</span><strong>{age}</strong></div><div className="device-line"><span>Location source</span><strong>{status.location_source || "—"}</strong></div></article>
+          <article className="card device-card"><CardTitle label="DEVICE" icon="◉" /><div className="device-line"><span>Power</span><strong className={isPoweredOn ? "green" : "red"}>{isPoweredOn ? "On" : "Powered off"}</strong></div><div className="device-line"><span>Connection</span><strong className={isOnline ? "green" : "red"}>{isOnline ? "Online" : "Offline"}</strong></div><div className="device-line"><span>Wrist unit</span><strong className={status.wrist_connected ? "green" : "red"}>{status.wrist_connected ? "Linked over BLE" : "Not linked"}</strong></div><div className="device-line"><span>Last update</span><strong>{age}</strong></div><div className="device-line"><span>Location source</span><strong>{status.location_source || "—"}</strong></div></article>
         </aside>
       </section>
       <section className="cards-grid">
         <article className="card music-card"><CardTitle label="MUSIC" icon="♫" /><div className="music-status"><span className={`play-icon ${status.is_playing ? "active" : ""}`}>{status.is_playing ? "▶" : "Ⅱ"}</span><div><strong>{status.is_playing ? "PLAYING" : "PAUSED"}</strong><p>Track {status.current_track || "—"} of {status.total_tracks || "—"}</p></div></div><div className="progress"><span style={{ width: `${status.total_tracks ? Math.min(100, (status.current_track / status.total_tracks) * 100) : 0}%` }} /></div><div className="volume-row"><span>VOLUME</span><strong>{status.volume} <small>/ 30</small></strong></div><div className="music-controls"><button disabled={commandBusy || !isPoweredOn} onClick={() => void sendCommand("previous_track")}>Previous</button><button className="primary-button" disabled={commandBusy || !isPoweredOn} onClick={() => void sendCommand("play_pause")}>{status.is_playing ? "Pause" : "Play"}</button><button disabled={commandBusy || !isPoweredOn} onClick={() => void sendCommand("next_track")}>Next</button></div><div className="play-track-row"><input aria-label="Track number" type="number" min="1" max={status.total_tracks || 1} value={trackToPlay} disabled={!isPoweredOn} onChange={(event) => setTrackToPlay(Number(event.target.value))} /><button disabled={commandBusy || !isPoweredOn || !status.total_tracks} onClick={() => void sendCommand("play_track", trackToPlay)}>Play track</button></div></article>
-        <article className="card heart-card"><CardTitle label="HEART RATE" icon="♥" /><div className="heart-value">{status.heart_rate === null ? "--" : status.heart_rate}<span>BPM</span></div><p className="muted">{status.heart_rate === null ? "Sensor not connected" : "Current reading"}</p><div className="sensor-state"><span className={`status-dot ${heartTone}`} /> {heartNote}</div></article>
+        <article className="card heart-card"><CardTitle label="HEART RATE" icon="♥" /><div className="heart-value">{status.heart_rate === null ? "--" : status.heart_rate}<span>BPM</span></div><p className="muted">{status.rmssd_ms === null ? "From the wrist unit over BLE" : `HRV ${status.rmssd_ms} ms RMSSD`}</p><div className="sensor-state"><span className={`status-dot ${heartTone}`} /> {heartNote}</div></article>
+        <article className="card stress-card"><CardTitle label="STRESS" icon="⚡" /><div className="heart-value">{status.stress_score === null ? "--" : status.stress_score}<span>/100</span></div><p className="muted">{status.spo2 === null ? "MAX30102 via the wrist unit" : `SpO2 ${status.spo2}%`}</p><div className="sensor-state"><span className={`status-dot ${stressTone}`} /> {stressNote}</div></article>
         <article className="card address-card"><CardTitle label="ADDRESS" icon="⌂" /><p className="address-text">{status.address || "The wearable has not reported an address yet."}</p><p className="muted">Address is supplied by the wearable&apos;s Google reverse-geocoding lookup.</p></article>
       </section>
       <SafetyPanel status={status} onSafetyChange={handleSafetyChange} />

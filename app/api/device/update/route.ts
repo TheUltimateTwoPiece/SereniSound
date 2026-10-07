@@ -19,6 +19,11 @@ type DevicePayload = {
   is_playing: boolean;
   volume: number;
   heart_rate: number | null;
+  stress_score?: number | null;
+  stress_label?: string | null;
+  spo2?: number | null;
+  rmssd_ms?: number | null;
+  wrist_connected?: boolean;
   device_powered_on?: boolean;
 };
 
@@ -66,6 +71,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid heart_rate" }, { status: 400 });
     }
 
+    const stressScore = body.stress_score;
+    if (stressScore !== undefined && stressScore !== null &&
+      (!Number.isInteger(stressScore) || stressScore < 0 || stressScore > 100)) {
+      return NextResponse.json({ error: "Invalid stress_score" }, { status: 400 });
+    }
+    const spo2 = body.spo2;
+    if (spo2 !== undefined && spo2 !== null &&
+      (!Number.isInteger(spo2) || spo2 < 0 || spo2 > 100)) {
+      return NextResponse.json({ error: "Invalid spo2" }, { status: 400 });
+    }
+    const rmssd = body.rmssd_ms;
+    if (rmssd !== undefined && rmssd !== null &&
+      (!Number.isInteger(rmssd) || rmssd < 0 || rmssd > 400)) {
+      return NextResponse.json({ error: "Invalid rmssd_ms" }, { status: 400 });
+    }
+    if (body.wrist_connected !== undefined && typeof body.wrist_connected !== "boolean") {
+      return NextResponse.json({ error: "Invalid wrist_connected" }, { status: 400 });
+    }
+    const stressLabel = typeof body.stress_label === "string"
+      ? body.stress_label.slice(0, 40)
+      : body.stress_label === null ? null : undefined;
+
     const supabaseServer = getSupabaseServer();
     const { error } = await supabaseServer.from("device_status").upsert({
       device_id: DEVICE_ID,
@@ -79,6 +106,11 @@ export async function POST(request: Request) {
       is_playing: body.is_playing,
       volume: deviceVolume,
       heart_rate: body.heart_rate ?? null,
+      stress_score: stressScore === undefined ? null : stressScore,
+      stress_label: stressLabel === undefined ? null : stressLabel,
+      spo2: spo2 === undefined ? null : spo2,
+      rmssd_ms: rmssd === undefined ? null : rmssd,
+      wrist_connected: body.wrist_connected ?? false,
       device_powered_on: body.device_powered_on ?? true,
       updated_at: new Date().toISOString(),
     }, { onConflict: "device_id" });
@@ -102,6 +134,11 @@ export async function POST(request: Request) {
       is_playing: body.is_playing,
       volume: deviceVolume,
       heart_rate: body.heart_rate ?? null,
+      stress_score: stressScore === undefined ? null : stressScore,
+      stress_label: stressLabel === undefined ? null : stressLabel,
+      spo2: spo2 === undefined ? null : spo2,
+      rmssd_ms: rmssd === undefined ? null : rmssd,
+      wrist_connected: body.wrist_connected ?? false,
       device_powered_on: body.device_powered_on ?? true,
       updated_at: new Date().toISOString(),
     };

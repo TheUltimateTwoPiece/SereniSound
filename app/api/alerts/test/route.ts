@@ -44,6 +44,11 @@ async function loadStatus(): Promise<DeviceStatus> {
     is_playing: false,
     volume: 0,
     heart_rate: null,
+    stress_score: null,
+    stress_label: null,
+    spo2: null,
+    rmssd_ms: null,
+    wrist_connected: false,
     device_powered_on: true,
     updated_at: new Date().toISOString(),
   }) as DeviceStatus;

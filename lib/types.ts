@@ -10,6 +10,11 @@ export type DeviceStatus = {
   is_playing: boolean;
   volume: number;
   heart_rate: number | null;
+  stress_score: number | null;
+  stress_label: string | null;
+  spo2: number | null;
+  rmssd_ms: number | null;
+  wrist_connected: boolean;
   device_powered_on: boolean;
   updated_at: string;
 };

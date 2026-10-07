@@ -10,12 +10,22 @@ create table if not exists public.device_status (
   is_playing boolean not null default false,
   volume integer not null default 0 check (volume between 0 and 30),
   heart_rate integer,
+  stress_score integer check (stress_score is null or stress_score between 0 and 100),
+  stress_label text,
+  spo2 integer check (spo2 is null or spo2 between 0 and 100),
+  rmssd_ms integer check (rmssd_ms is null or rmssd_ms between 0 and 400),
+  wrist_connected boolean not null default false,
   device_powered_on boolean not null default true,
   updated_at timestamptz not null default now()
 );
 
 alter table public.device_status enable row level security;
 alter table public.device_status add column if not exists device_powered_on boolean not null default true;
+alter table public.device_status add column if not exists stress_score integer;
+alter table public.device_status add column if not exists stress_label text;
+alter table public.device_status add column if not exists spo2 integer;
+alter table public.device_status add column if not exists rmssd_ms integer;
+alter table public.device_status add column if not exists wrist_connected boolean not null default false;
 -- The browser reads initial state through the Next.js server route.
 -- Realtime requires a SELECT policy for the browser's publishable key.
 drop policy if exists "caregivers can read device status" on public.device_status;

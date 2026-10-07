@@ -377,10 +377,10 @@
     <text class="sm" x="1266" y="114" text-anchor="middle">all three = power gesture</text>
 
     <rect class="box-r" x="1454" y="20" width="336" height="120"/>
-    <text class="bt" x="1622" y="48" text-anchor="middle">Heart-rate sensor</text>
-    <text class="sm-r" x="1622" y="72" text-anchor="middle">NOT WIRED</text>
-    <text class="sm" x="1622" y="92" text-anchor="middle">setHeartRate(bpm) is the hook</text>
-    <text class="sm" x="1622" y="114" text-anchor="middle">heart_rate uploads as JSON null</text>
+    <text class="bt" x="1622" y="48" text-anchor="middle">Wrist unit (BLE)</text>
+    <text class="sm" x="1622" y="72" text-anchor="middle">ESP32-C3 + MAX30102</text>
+    <text class="sm" x="1622" y="92" text-anchor="middle">notifies hr,stress,spo2,rmssd</text>
+    <text class="sm" x="1622" y="114" text-anchor="middle">main unit uploads to the site</text>
 
     <!-- shared state -->
     <rect class="box" x="30" y="180" width="860" height="260"/>
@@ -430,13 +430,16 @@
     <text class="it" x="52" y="270">is_playing</text><text class="sm" x="300" y="270">bool</text>
     <text class="it" x="52" y="296">volume</text><text class="sm" x="300" y="296">CHECK 0 to 30</text>
     <text class="it" x="52" y="322">heart_rate</text><text class="sm" x="300" y="322">int4, ≥ 0, nullable</text>
-    <text class="it" x="52" y="348">device_powered_on</text><text class="sm" x="300" y="348">bool</text>
-    <text class="it" x="52" y="374">updated_at</text><text class="sm" x="300" y="374">timestamptz</text>
-    <line class="sep-l" x1="46" y1="396" x2="434" y2="396"/>
-    <text class="sm-t" x="52" y="422">REPLICA IDENTITY FULL</text>
-    <text class="sm-t" x="52" y="442">member of supabase_realtime</text>
-    <text class="sm-t" x="52" y="462">1 public policy: SELECT to anon</text>
-    <text class="sm-t" x="52" y="480">   + authenticated, USING (true)</text>
+    <text class="it" x="52" y="348">stress_score / label</text><text class="sm" x="300" y="348">0–100 + text</text>
+    <text class="it" x="52" y="374">spo2 / rmssd_ms</text><text class="sm" x="300" y="374">nullable ints</text>
+    <text class="it" x="52" y="400">wrist_connected</text><text class="sm" x="300" y="400">bool, BLE link</text>
+    <text class="it" x="52" y="426">device_powered_on</text><text class="sm" x="300" y="426">bool</text>
+    <text class="it" x="52" y="452">updated_at</text><text class="sm" x="300" y="452">timestamptz</text>
+    <line class="sep-l" x1="46" y1="468" x2="434" y2="468"/>
+    <text class="sm-t" x="52" y="492">REPLICA IDENTITY FULL</text>
+    <text class="sm-t" x="52" y="512">member of supabase_realtime</text>
+    <text class="sm-t" x="52" y="532">1 public policy: SELECT to anon</text>
+    <text class="sm-t" x="52" y="552">   + authenticated, USING (true)</text>
     <line class="sep-l" x1="46" y1="502" x2="434" y2="502"/>
     <text class="sm" x="52" y="528">Written only by the service role, via</text>
     <text class="sm" x="52" y="546">POST /api/device/update (upsert on</text>

@@ -91,7 +91,7 @@ Demo emails are marked `[DEMO]` in the subject and ignore the cooldown. If no zo
 
 ### Live heart rate
 
-The firmware already uploads `heart_rate` (and sends `null` when no sensor is attached), and `setHeartRate(bpm)` is the intended entry point for a sensor reading. No pulse sensor is read yet, so real heart-rate warnings begin once that call is wired to a sensor.
+The wrist unit (ESP32-C3 + MAX30102) measures heart rate, HRV, SpO2 and a stress score, then notifies the main wearable over BLE. The wearable merges those fields into the five-second `/api/device/update` payload (`heart_rate`, `stress_score`, `stress_label`, `spo2`, `rmssd_ms`, `wrist_connected`). Off-wrist bring-up uses the node's mock generator (`still` / `move` / `stress`).
 
 ## 6. ESP32
 
