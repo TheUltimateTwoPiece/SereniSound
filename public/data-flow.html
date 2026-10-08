@@ -209,7 +209,7 @@
     <text class="sm" x="1595" y="320" text-anchor="middle">- Google Maps and zone</text>
     <text class="bt-s" x="1595" y="346" text-anchor="middle">SafetyPanel</text>
     <text class="sm" x="1595" y="364" text-anchor="middle">- 15 s settings poll</text>
-    <text class="sm" x="1595" y="382" text-anchor="middle">- demo scenarios</text>
+    <text class="sm" x="1595" y="382" text-anchor="middle">- zone and limit form</text>
     <text class="sm" x="1595" y="404" text-anchor="middle">no direct DB writes</text>
 
     <!-- ===================== EDGE 1 ===================== -->
@@ -546,12 +546,12 @@
     <text class="sm" x="1372" y="542">timeline also shows alerts that were held back.</text>
     <text class="sm" x="1372" y="574">recovery events are dashboard-only and</text>
     <text class="sm" x="1372" y="592">never emailed.</text>
-    <text class="sm" x="1372" y="624">Demo scenarios reuse the real detection</text>
-    <text class="sm" x="1372" y="642">code against invented readings, get a</text>
-    <text class="sm" x="1372" y="660">[DEMO] prefix, skip the cooldown, and</text>
-    <text class="sm" x="1372" y="678">are flagged is_test = true.</text>
-    <text class="sm" x="1372" y="710">clear_history deletes these rows and</text>
-    <text class="sm" x="1372" y="728">nulls both cooldown stamps.</text>
+    <text class="sm" x="1372" y="624">Every row comes from real wearable</text>
+    <text class="sm" x="1372" y="642">traffic. There is no simulated mode,</text>
+    <text class="sm" x="1372" y="660">so is_test stays false throughout.</text>
+    <text class="sm" x="1372" y="700">Cooldowns are per check and are held in</text>
+    <text class="sm" x="1372" y="718">device_alert_settings, so a restart does</text>
+    <text class="sm" x="1372" y="736">not reopen the email floodgates.</text>
   </svg>
   </div>
 </section>
@@ -740,7 +740,7 @@
 </section>
 
 <footer>
-  Taken from the code as it stands: <code>app/api/device/*</code>, <code>app/api/alerts/*</code>, <code>lib/alerts.ts</code>, <code>components/dashboard.tsx</code>, <code>components/safety-panel.tsx</code>, <code>supabase/schema.sql</code>, and <code>esp32/serenisound_wearable.ino</code>.
+  Taken from the code as it stands: <code>app/api/device/*</code>, <code>app/api/alerts/*</code>, <code>lib/alerts.ts</code>, <code>components/dashboard.tsx</code>, <code>components/safety-panel.tsx</code>, <code>supabase/schema.sql</code>, and <code>esp32/serenisound_wearable/</code> and <code>esp32/ppg_node/</code>.
 </footer>
 
 </body>

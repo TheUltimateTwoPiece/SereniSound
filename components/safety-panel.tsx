@@ -9,17 +9,6 @@ export type SafetyOverlay = {
   heartRate: { enabled: boolean; limit: number };
 };
 
-type Scenario = "zone_exit" | "heart_rate" | "test_email" | "safe_return" | "clear_history";
-type DemoResult = { tone: "success" | "warning" | "error"; message: string };
-
-const DEMO_ACTIONS: { scenario: Scenario; label: string; hint: string; tone: "primary" | "plain" | "danger" }[] = [
-  { scenario: "zone_exit", label: "Zone breach warning", hint: "Simulated position outside the zone", tone: "primary" },
-  { scenario: "heart_rate", label: "Heart-rate warning", hint: "Simulated reading above the limit", tone: "plain" },
-  { scenario: "test_email", label: "Send test email", hint: "Checks Brevo delivery only", tone: "plain" },
-  { scenario: "safe_return", label: "Mark safe again", hint: "Clears the warning state", tone: "plain" },
-  { scenario: "clear_history", label: "Clear history", hint: "Resets the demo log", tone: "danger" },
-];
-
 const KIND_LABELS: Record<AlertRecord["kind"], string> = {
   geofence_exit: "ZONE",
   heart_rate_high: "HEART",
@@ -53,8 +42,6 @@ export default function SafetyPanel({
   const [error, setError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [running, setRunning] = useState<Scenario | null>(null);
-  const [demoResult, setDemoResult] = useState<DemoResult | null>(null);
   // Tracks whether the form has ever been populated, so a failed first load can recover.
   const hasDraft = useRef(false);
 
@@ -147,40 +134,11 @@ export default function SafetyPanel({
     setDraft((current) => current && { ...current, zone_latitude: status.latitude, zone_longitude: status.longitude });
   }, [status.latitude, status.longitude]);
 
-  const runDemo = useCallback(async (scenario: Scenario) => {
-    setRunning(scenario);
-    setDemoResult(null);
-    try {
-      const response = await fetch("/api/alerts/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenario }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Unable to run the demo");
-      if (Array.isArray(result.history)) setHistory(result.history);
-      const email = result.email as { status: string; error: string | null } | undefined;
-      const target = settings?.alert_email ?? "the caregiver inbox";
-      if (email?.status === "sent") {
-        setDemoResult({ tone: "success", message: `${result.message} Email delivered to ${target}.` });
-      } else if (email?.status === "failed") {
-        setDemoResult({ tone: "error", message: `Warning recorded, but the email failed: ${email.error}` });
-      } else if (email?.status === "skipped" && scenario !== "clear_history") {
-        setDemoResult({ tone: "warning", message: `Recorded without sending email: ${email.error ?? "no email sent"}` });
-      } else {
-        setDemoResult({ tone: "success", message: result.message });
-      }
-    } catch (demoError) {
-      setDemoResult({ tone: "error", message: demoError instanceof Error ? demoError.message : "Unable to run the demo" });
-    } finally {
-      setRunning(null);
-    }
-  }, [settings?.alert_email]);
-
   return (
     <section className="safety-grid">
       <article className="card zone-card">
         <CardTitle label="SAFETY ZONE & WARNINGS" icon="⬡" />
+        {error && draft && <p className="panel-error">{error}</p>}
         {!draft ? (
           <p className="muted">{error ?? "Loading alert settings…"}</p>
         ) : (
@@ -309,35 +267,10 @@ export default function SafetyPanel({
         )}
       </article>
 
-      <article className="card demo-card">
-        <CardTitle label="FEATURE DEMO PANEL" icon="▶" />
-        <p className="muted">
-          Each button runs the real detection and email code against invented readings, so you can show every warning
-          live without moving the wearable. Demo emails are marked <strong>[DEMO]</strong> and ignore the five-minute
-          warning cooldown.
-        </p>
-        <div className="demo-list">
-          {DEMO_ACTIONS.map((action) => (
-            <button
-              key={action.scenario}
-              type="button"
-              className={`demo-action ${action.tone}`}
-              onClick={() => void runDemo(action.scenario)}
-              disabled={running !== null}
-            >
-              <strong>{running === action.scenario ? "Running…" : action.label}</strong>
-              <span>{action.hint}</span>
-            </button>
-          ))}
-        </div>
-        {demoResult && <p className={`demo-result ${demoResult.tone}`}>{demoResult.message}</p>}
-        {error && <p className="demo-result error">{error}</p>}
-      </article>
-
       <article className="card history-card">
         <CardTitle label="WARNING HISTORY" icon="⏱" />
         {history.length === 0 ? (
-          <p className="muted">No warnings yet. Use the demo panel to run one.</p>
+          <p className="muted">No warnings yet. They appear here automatically when the wearable leaves the zone or the heart rate passes the limit.</p>
         ) : (
           <ul className="history-list">
             {history.slice(0, 8).map((entry) => (

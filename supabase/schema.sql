@@ -26,6 +26,35 @@ alter table public.device_status add column if not exists stress_label text;
 alter table public.device_status add column if not exists spo2 integer;
 alter table public.device_status add column if not exists rmssd_ms integer;
 alter table public.device_status add column if not exists wrist_connected boolean not null default false;
+
+-- The health columns were added to a live table after the fact, so the ranges
+-- the create-table body declares have to be attached here too. Guarded so a
+-- rerun does not fail on an existing constraint.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conrelid = 'public.device_status'::regclass
+                 and conname = 'device_status_stress_score_check') then
+    alter table public.device_status add constraint device_status_stress_score_check
+      check (stress_score is null or stress_score between 0 and 100);
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'public.device_status'::regclass
+                 and conname = 'device_status_spo2_check') then
+    alter table public.device_status add constraint device_status_spo2_check
+      check (spo2 is null or spo2 between 0 and 100);
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'public.device_status'::regclass
+                 and conname = 'device_status_rmssd_ms_check') then
+    alter table public.device_status add constraint device_status_rmssd_ms_check
+      check (rmssd_ms is null or rmssd_ms between 0 and 400);
+  end if;
+end
+$$;
+
+-- Rows written before the column existed can hold null; clear them so NOT NULL
+-- can be applied. A fresh install has none.
+update public.device_status set wrist_connected = false where wrist_connected is null;
+alter table public.device_status alter column wrist_connected set default false;
+alter table public.device_status alter column wrist_connected set not null;
 -- The browser reads initial state through the Next.js server route.
 -- Realtime requires a SELECT policy for the browser's publishable key.
 drop policy if exists "caregivers can read device status" on public.device_status;

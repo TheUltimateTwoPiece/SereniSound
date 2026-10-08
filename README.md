@@ -75,27 +75,19 @@ The zone is drawn on the map as a circle that turns red when the wearable is out
 
 Checks run on the server for every wearable upload (roughly every five seconds), so the ESP32 needs no changes and no zone download. Warnings are throttled to one email per check per five minutes so a single incident cannot flood the inbox; the dashboard log still records every evaluation. Delivery results (`sent`, `failed`, `skipped`) are stored with each warning and shown in the history list.
 
-### Demo testing panel
+There is no simulated or test mode. Every warning in the history list came from a real reading, and nothing in the system invents vitals: with no fresh sensor data the dashboard shows an empty reading rather than a plausible-looking number.
 
-A **Feature demo panel** runs the same detection and email code as live traffic, but against invented readings, so all of it can be demonstrated without moving the wearable:
+### Live heart rate and stress
 
-| Button | What it proves |
-| --- | --- |
-| Zone breach warning | Builds a simulated position outside the zone and emails the caregiver. |
-| Heart-rate warning | Builds a simulated reading above the limit and emails the caregiver. |
-| Send test email | Confirms Brevo delivery on its own. |
-| Mark safe again | Records a recovery notice and clears the warning cooldowns. |
-| Clear history | Deletes the demo log so the next demo starts clean. |
+The wrist unit (ESP32-C3 + MAX30102) measures heart rate, HRV, SpO2 and a stress score, then notifies the main wearable over BLE. The wearable merges those fields into the five-second `/api/device/update` payload (`heart_rate`, `stress_score`, `stress_label`, `spo2`, `rmssd_ms`, `wrist_connected`). The node publishes only real sensor readings and has no generator to fall back on, so a missing or badly seated sensor reports zeros instead of fabricated numbers.
 
-Demo emails are marked `[DEMO]` in the subject and ignore the cooldown. If no zone is configured yet, the zone demo temporarily centres one on the wearable's last known position.
+### Wrist link status
 
-### Live heart rate
-
-The wrist unit (ESP32-C3 + MAX30102) measures heart rate, HRV, SpO2 and a stress score, then notifies the main wearable over BLE. The wearable merges those fields into the five-second `/api/device/update` payload (`heart_rate`, `stress_score`, `stress_label`, `spo2`, `rmssd_ms`, `wrist_connected`). Off-wrist bring-up uses the node's mock generator (`still` / `move` / `stress`).
+`wrist_connected` is true when the wearable has received a wrist reading within the last ten seconds. If that stream goes quiet while the Bluetooth link still reports connected, the wearable drops the link and re-subscribes instead of leaving the dashboard stuck on *Not linked*, and it re-reads the characteristic as a liveness fallback. Because the value arrives on the wearable's own cadence, the dashboard also holds the link as up for a short grace window so a single missed packet cannot flip the card.
 
 ## 6. ESP32
 
-The completed sketch is `esp32/serenisound_wearable.ino`. It is deliberately **not** in version control: it hardcodes the Wi-Fi credentials, the Google geolocation key and the device token, so `esp32/` is gitignored and the file exists only on the machine that flashes the board. Set `DEVICE_UPDATE_URL` to the deployed `/api/device/update` URL before flashing. The sketch preserves the supplied GPIO assignments and music/button behavior, uses GPS first and WPS fallback, throttles reverse geocoding, performs device updates every five seconds with transient retries, and polls the secure command endpoint for caregiver music commands. Backend failures remain non-fatal.
+The main wearable sketch is `esp32/serenisound_wearable/` (the `.ino` plus `wrist_ble_client.h`), and the wrist node is `esp32/ppg_node/` (the `.ino`, `ppg.h`, and `ble.h`). Both are deliberately **not** in version control: they hardcode the Wi-Fi credentials, the Google geolocation key and the device token, so `esp32/` is gitignored and the sources exist only on the machines that flash the boards. Set `DEVICE_UPDATE_URL` to the deployed `/api/device/update` URL before flashing. The sketch preserves the supplied GPIO assignments and music/button behavior, uses GPS first and WPS fallback, throttles reverse geocoding, performs device updates every five seconds with transient retries, and polls the secure command endpoint for caregiver music commands. Backend failures remain non-fatal.
 
 The wearable also supports a three-button power-save latch: hold all three buttons for three seconds to stop playback, notify the dashboard that the device is powered off, and switch off Wi-Fi, GPS, and the display. Hold all three buttons for another three seconds to bring everything back; the display and GPS return first and the sketch reconnects Wi-Fi in the background, so buttons and audio stay responsive the whole time. Wi-Fi is only re-enabled after the wake, and the DFPlayer stays initialized instead of being put to sleep, because reviving it over serial after a sleep was unreliable. If the dashboard cannot be reached while powering down, the device still enters power-save after a short grace period.
 

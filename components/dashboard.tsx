@@ -14,6 +14,10 @@ declare global {
 }
 
 const OFFLINE_AFTER_MS = 10_000;
+// The wrist link is reported over BLE on the wearable's own cadence, so a single
+// missed packet should not flip the whole dashboard to "Not linked". Hold the
+// link as up for a short grace window after the last good sample.
+const WRIST_GRACE_MS = 15_000;
 const emptyStatus: DeviceStatus = {
   device_id: "pwd-001", latitude: null, longitude: null, address: null,
   location_source: "NONE", location_accuracy: null, current_track: 0,
@@ -45,6 +49,7 @@ export default function Dashboard() {
   const [trackToPlay, setTrackToPlay] = useState(1);
   const [safety, setSafety] = useState<SafetyOverlay | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [wristSeenAt, setWristSeenAt] = useState(0);
   const mapElement = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
@@ -54,6 +59,7 @@ export default function Dashboard() {
   const isPoweredOn = status.device_powered_on !== false;
   const isOnline = isPoweredOn && Boolean(status.updated_at) && now - new Date(status.updated_at).getTime() <= OFFLINE_AFTER_MS;
   const age = formatAge(status.updated_at, now);
+  const wristLinked = status.wrist_connected || (wristSeenAt > 0 && now - wristSeenAt < WRIST_GRACE_MS);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -102,19 +108,19 @@ export default function Dashboard() {
     ? "neutral"
     : status.heart_rate > safety.heartRate.limit ? "offline" : "online";
   const heartNote = status.heart_rate === null
-    ? (status.wrist_connected ? "Wrist unit linked, waiting for a reading" : "Wrist unit not connected")
+    ? (wristLinked ? "Wrist unit linked, waiting for a reading" : "Wrist unit not connected")
     : !safety?.heartRate.enabled
       ? "Heart-rate warning emails are off"
       : status.heart_rate > safety.heartRate.limit
         ? `Above the ${safety.heartRate.limit} bpm limit — caregiver warned by email`
         : `Within the ${safety.heartRate.limit} bpm limit`;
 
-  const stressTone = !status.wrist_connected || status.stress_score === null
+  const stressTone = !wristLinked || status.stress_score === null
     ? "neutral"
     : (status.stress_label || "").includes("STRESS") || (status.stress_score ?? 0) >= 60
       ? "offline"
       : "online";
-  const stressNote = !status.wrist_connected
+  const stressNote = !wristLinked
     ? "Waiting for the wrist unit over Bluetooth"
     : status.stress_label
       ? status.stress_label.replace(/_/g, " ")
@@ -145,6 +151,11 @@ export default function Dashboard() {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  // Remember the last moment the wrist link was reported up.
+  useEffect(() => {
+    if (status.wrist_connected) setWristSeenAt(Date.now());
+  }, [status.wrist_connected]);
 
   useEffect(() => {
     void loadStatus();
@@ -234,7 +245,7 @@ export default function Dashboard() {
         <article className="map-card"><div className="card-heading"><div><p className="eyebrow">CURRENT LOCATION</p><h3>{status.address || "Location awaiting update"}</h3></div><div className="badge-row">{safety?.zone.enabled && <span className={`source-badge ${outsideZone ? "alert" : "safe"}`}>{zoneDistance === null ? "ZONE ACTIVE" : outsideZone ? "OUTSIDE ZONE" : "INSIDE ZONE"}</span>}<span className={`source-badge ${status.location_source === "WPS" ? "wps" : "gps"}`}>{status.location_source || "NONE"}</span></div></div><div className="map" ref={mapElement}><div className="map-fallback">{status.latitude === null ? "Waiting for wearable location…" : "Loading map…"}</div></div></article>
         <aside className="side-stack">
           <article className="card location-card"><CardTitle label="LOCATION DETAILS" icon="⌖" /><div className="metric-grid"><Metric label="LATITUDE" value={status.latitude === null ? "—" : status.latitude.toFixed(6)} /><Metric label="LONGITUDE" value={status.longitude === null ? "—" : status.longitude.toFixed(6)} /><Metric label="SOURCE" value={status.location_source || "—"} /><Metric label="ACCURACY" value={formatAccuracy(status.location_accuracy)} /></div></article>
-          <article className="card device-card"><CardTitle label="DEVICE" icon="◉" /><div className="device-line"><span>Power</span><strong className={isPoweredOn ? "green" : "red"}>{isPoweredOn ? "On" : "Powered off"}</strong></div><div className="device-line"><span>Connection</span><strong className={isOnline ? "green" : "red"}>{isOnline ? "Online" : "Offline"}</strong></div><div className="device-line"><span>Wrist unit</span><strong className={status.wrist_connected ? "green" : "red"}>{status.wrist_connected ? "Linked over BLE" : "Not linked"}</strong></div><div className="device-line"><span>Last update</span><strong>{age}</strong></div><div className="device-line"><span>Location source</span><strong>{status.location_source || "—"}</strong></div></article>
+          <article className="card device-card"><CardTitle label="DEVICE" icon="◉" /><div className="device-line"><span>Power</span><strong className={isPoweredOn ? "green" : "red"}>{isPoweredOn ? "On" : "Powered off"}</strong></div><div className="device-line"><span>Connection</span><strong className={isOnline ? "green" : "red"}>{isOnline ? "Online" : "Offline"}</strong></div><div className="device-line"><span>Wrist unit</span><strong className={wristLinked ? "green" : "red"}>{wristLinked ? "Linked over BLE" : "Not linked"}</strong></div><div className="device-line"><span>Last update</span><strong>{age}</strong></div><div className="device-line"><span>Location source</span><strong>{status.location_source || "—"}</strong></div></article>
         </aside>
       </section>
       <section className="cards-grid">
